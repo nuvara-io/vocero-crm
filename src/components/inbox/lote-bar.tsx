@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Archive, ArchiveRestore, Send } from "lucide-react";
+import { Archive, ArchiveRestore, ArrowRightLeft, Send } from "lucide-react";
 import type { ConversationDto, LossReason, StageDto, TemplateDto } from "@/lib/types";
 import { LOSS_REASON_LABEL } from "@/lib/types";
 import { countVariables } from "@/lib/templates";
 import { aplicarLote, type MiembroDto } from "@/lib/equipo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SelectNativo } from "@/components/ui/select-nativo";
 
 /**
  * 067 — Acciones sobre las conversaciones elegidas en la Bandeja: archivar,
@@ -112,16 +113,23 @@ export function LoteBar({
     if (enviadas > 0) onRefrescar();
   }
 
-  const select =
-    "w-full rounded-md border border-border-strong bg-background px-2 py-1.5 text-[13px]";
-
   return (
-    <div className="space-y-2 border-t bg-subtle px-3 py-2.5" role="region" aria-label="Acciones en lote">
-      <div className="flex flex-wrap items-center gap-1.5">
-        <span className="mr-1 text-[12.5px] font-semibold">{n} elegidas</span>
+    <div
+      className="space-y-2.5 border-t border-border-strong bg-card px-3 pb-3 pt-2.5 shadow-[0_-6px_16px_-10px_rgba(15,23,42,0.25)]"
+      role="region"
+      aria-label="Acciones en lote"
+    >
+      <div className="flex items-center justify-between">
+        <span className="rounded-full bg-primary px-2.5 py-0.5 text-[12px] font-semibold text-primary-foreground">
+          {n} {n === 1 ? "elegida" : "elegidas"}
+        </span>
+        {trabajando && <span className="text-[12px] text-text-3">Aplicando…</span>}
+      </div>
+      <div className="grid grid-cols-2 gap-1.5">
         <Button
           size="sm"
           variant="outline"
+          className="w-full"
           disabled={trabajando}
           onClick={() =>
             void correr(
@@ -140,12 +148,16 @@ export function LoteBar({
         <Button
           size="sm"
           variant={panel === "etapa" ? "default" : "outline"}
+          className="w-full"
           disabled={trabajando}
+          aria-expanded={panel === "etapa"}
           onClick={() => setPanel(panel === "etapa" ? null : "etapa")}
         >
+          <ArrowRightLeft className="h-4 w-4" strokeWidth={1.7} />
           Etapa
         </Button>
-        <select
+        <SelectNativo
+          tamano="sm"
           aria-label="Asignar responsable a las elegidas"
           disabled={trabajando}
           value=""
@@ -159,7 +171,6 @@ export function LoteBar({
               quien ? `Ahora ${quien} hace el seguimiento.` : "Quedaron sin responsable."
             );
           }}
-          className="h-8 rounded-md border border-border-strong bg-background px-2 text-[12.5px] font-medium"
         >
           <option value="">Responsable…</option>
           {equipo.map((m) => (
@@ -168,11 +179,13 @@ export function LoteBar({
             </option>
           ))}
           <option value="__nadie">Sin responsable</option>
-        </select>
+        </SelectNativo>
         <Button
           size="sm"
           variant={panel === "plantilla" ? "default" : "outline"}
+          className="w-full"
           disabled={trabajando}
+          aria-expanded={panel === "plantilla"}
           onClick={() => setPanel(panel === "plantilla" ? null : "plantilla")}
         >
           <Send className="h-4 w-4" strokeWidth={1.7} />
@@ -181,12 +194,11 @@ export function LoteBar({
       </div>
 
       {panel === "etapa" && (
-        <div className="space-y-2">
-          <select
+        <div className="space-y-2 rounded-xl border bg-subtle p-2.5">
+          <SelectNativo
             aria-label="Etapa destino"
             value={stageId}
             onChange={(e) => setStageId(e.target.value)}
-            className={select}
           >
             <option value="">Mover a…</option>
             {stages.map((s) => (
@@ -194,24 +206,24 @@ export function LoteBar({
                 {s.name}
               </option>
             ))}
-          </select>
+          </SelectNativo>
           {etapa?.kind === "lost" && (
-            <select
+            <SelectNativo
               aria-label="Motivo de la pérdida"
               value={lossReason}
               onChange={(e) => setLossReason(e.target.value as LossReason | "")}
-              className={select}
-            >
+              >
               <option value="">¿Por qué se perdió?</option>
               {(Object.keys(LOSS_REASON_LABEL) as LossReason[]).map((k) => (
                 <option key={k} value={k}>
                   {LOSS_REASON_LABEL[k]}
                 </option>
               ))}
-            </select>
+            </SelectNativo>
           )}
           <Button
             size="sm"
+            className="w-full"
             disabled={trabajando || !etapa || (etapa.kind === "lost" && !lossReason)}
             onClick={() =>
               etapa &&
@@ -231,28 +243,27 @@ export function LoteBar({
       )}
 
       {panel === "plantilla" && (
-        <div className="space-y-2">
+        <div className="space-y-2 rounded-xl border bg-subtle p-2.5">
           {templates.length === 0 ? (
             <p className="text-[12px] text-text-3">
               No hay plantillas aprobadas sin variables o con una sola (el nombre).
             </p>
           ) : (
             <>
-              <select
+              <SelectNativo
                 aria-label="Plantilla a enviar"
                 value={templateId}
                 onChange={(e) => setTemplateId(e.target.value)}
-                className={select}
-              >
+                  >
                 <option value="">Elige la plantilla…</option>
                 {templates.map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.name}
                   </option>
                 ))}
-              </select>
+              </SelectNativo>
               {plantilla && (
-                <p className="whitespace-pre-wrap rounded-md border bg-background p-2 text-[12px] text-text-2">
+                <p className="whitespace-pre-wrap rounded-lg border bg-card p-2.5 text-[12px] text-text-2">
                   {plantilla.body}
                 </p>
               )}
@@ -270,6 +281,7 @@ export function LoteBar({
               )}
               <Button
                 size="sm"
+                className="w-full"
                 disabled={
                   trabajando || !plantilla || (usaNombre && sinNombre > 0 && !respaldo.trim())
                 }

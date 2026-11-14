@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { CheckSquare, Clock3, Hourglass, Inbox, Megaphone, SlidersHorizontal, Search, Sparkles, Square, UserCheck, UserRound, X } from "lucide-react";
+import { Check, CheckSquare, Clock3, Hourglass, Inbox, Megaphone, SlidersHorizontal, Search, Sparkles, UserCheck, UserRound, X } from "lucide-react";
 import type { ConversationDto } from "@/lib/types";
 import { etiquetaDeOrigen, titularDeOrigen } from "@/lib/anuncios";
 import { CHANNEL_LABEL, type Channel } from "@/lib/channels";
@@ -10,6 +10,7 @@ import { matchesQuery } from "@/lib/search";
 import { cn } from "@/lib/utils";
 import { ContactAvatar } from "@/components/avatar";
 import { Button } from "@/components/ui/button";
+import { SelectNativo } from "@/components/ui/select-nativo";
 import { EmptyState } from "@/components/ui/empty-state";
 import { emptyInboxDescription, formatTime, previewText } from "./helpers";
 import { EVENTO_BORRADOR, leerBorrador } from "@/lib/borradores";
@@ -312,10 +313,12 @@ export function ConversationList({
               onClick={() => (seleccionando ? salirDeSeleccion() : setSeleccionando(true))}
               aria-pressed={seleccionando}
               className={cn(
-                "flex items-center gap-1 rounded-md px-2 py-1 text-[12px] font-semibold transition-colors",
+                "flex h-7 items-center gap-1.5 rounded-full border px-3 text-[12px] font-semibold transition-colors",
                 FOCO_SEPARADO,
                 multiChannel ? "" : "ml-auto",
-                seleccionando ? "bg-brand-tint text-brand-text" : "text-text-2 hover:bg-subtle"
+                seleccionando
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-border-strong text-foreground hover:border-foreground"
               )}
             >
               <CheckSquare className="h-3.5 w-3.5" strokeWidth={1.9} />
@@ -408,14 +411,10 @@ export function ConversationList({
                 {stages.length > 0 && (
                   <label className="block space-y-1">
                     <span className="kicker text-text-3">Etapa</span>
-                    <select
+                    <SelectNativo
                       value={stage}
                       onChange={(e) => setStage(e.target.value)}
                       aria-label="Filtrar por etapa del embudo"
-                      className={cn(
-                        "w-full rounded-md border border-border-strong bg-background px-2 py-1.5 text-[13px]",
-                        FOCO_SEPARADO
-                      )}
                     >
                       <option value="all">Toda etapa</option>
                       {stages.map((s) => (
@@ -423,19 +422,15 @@ export function ConversationList({
                           {s}
                         </option>
                       ))}
-                    </select>
+                    </SelectNativo>
                   </label>
                 )}
                 <label className="block space-y-1">
                   <span className="kicker text-text-3">Responsable</span>
-                  <select
+                  <SelectNativo
                     value={responsable}
                     onChange={(e) => setResponsable(e.target.value)}
                     aria-label="Filtrar por responsable"
-                    className={cn(
-                      "w-full rounded-md border border-border-strong bg-background px-2 py-1.5 text-[13px]",
-                      FOCO_SEPARADO
-                    )}
                   >
                     <option value="all">Cualquiera</option>
                     <option value="none">Sin responsable</option>
@@ -444,18 +439,14 @@ export function ConversationList({
                         {m.name}
                       </option>
                     ))}
-                  </select>
+                  </SelectNativo>
                 </label>
                 <label className="block space-y-1">
                   <span className="kicker text-text-3">Seguimiento pendiente</span>
-                  <select
+                  <SelectNativo
                     value={diasSeguimiento}
                     onChange={(e) => setDiasSeguimiento(Number(e.target.value))}
                     aria-label="Filtrar por días sin respuesta"
-                    className={cn(
-                      "w-full rounded-md border border-border-strong bg-background px-2 py-1.5 text-[13px]",
-                      FOCO_SEPARADO
-                    )}
                   >
                     <option value={0}>Todas</option>
                     {DIAS_SEGUIMIENTO.map((d) => (
@@ -463,7 +454,7 @@ export function ConversationList({
                         Sin respuesta hace {d} {d === 1 ? "día" : "días"} o más
                       </option>
                     ))}
-                  </select>
+                  </SelectNativo>
                 </label>
                 {/* Como antes: sin ninguna, la casilla no aparece (salvo que esté marcada). */}
                 {(venciendo.length > 0 || soloPorVencer) && (
@@ -585,12 +576,16 @@ export function ConversationList({
                     )}
                   >
                     {seleccionando && (
-                      <span className="mt-2.5 shrink-0 text-brand-text" aria-hidden>
-                        {seleccion.has(c.id) ? (
-                          <CheckSquare className="h-4 w-4" strokeWidth={2} />
-                        ) : (
-                          <Square className="h-4 w-4 text-text-3" strokeWidth={1.7} />
+                      <span
+                        aria-hidden
+                        className={cn(
+                          "mt-3 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[6px] border-[1.5px] transition-colors",
+                          seleccion.has(c.id)
+                            ? "border-primary bg-primary text-primary-foreground"
+                            : "border-border-strong bg-card"
                         )}
+                      >
+                        {seleccion.has(c.id) && <Check className="h-3 w-3" strokeWidth={3} />}
                       </span>
                     )}
                     <span className="relative shrink-0">

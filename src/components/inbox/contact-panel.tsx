@@ -32,6 +32,7 @@ import { AnuncioOrigen } from "@/components/anuncio-origen";
 import { ContactAvatar } from "@/components/avatar";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { SelectNativo } from "@/components/ui/select-nativo";
 import { Textarea } from "@/components/ui/textarea";
 import { FichaPanel } from "@/components/ficha-panel";
 import { DeleteConversationDialog } from "./delete-conversation-dialog";
@@ -353,12 +354,11 @@ export function ContactPanel({
             <p className="mb-2 text-[12px] text-text-3">Nadie lo tiene a cargo todavía.</p>
           )}
           {conversation.leadId ? (
-            <select
+            <SelectNativo
               aria-label="Responsable del lead"
               disabled={aplicando || equipo === null}
               value={conversation.assignee?.id ?? ""}
               onChange={(e) => void lote({ accion: "asignar", userId: e.target.value || null })}
-              className="w-full rounded-md border border-border-strong bg-background px-2 py-1.5 text-[13px]"
             >
               <option value="">Sin responsable</option>
               {(equipo ?? []).map((m) => (
@@ -366,7 +366,7 @@ export function ContactPanel({
                   {m.name}
                 </option>
               ))}
-            </select>
+            </SelectNativo>
           ) : (
             <p className="text-[12px] text-text-3">Este contacto aún no tiene lead.</p>
           )}
