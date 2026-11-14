@@ -432,6 +432,7 @@ export function InboxClient({
           selectedId={selectedId}
           onSelect={select}
           onSeeded={() => void refetchConversations()}
+          onListaCambiada={() => void refetchConversations()}
         />
       </section>
 
@@ -598,6 +599,7 @@ export function InboxClient({
               onPatchConversation={patchConversation}
               onDeleteConversation={canDelete ? deleteConversation : undefined}
               onClose={() => togglePanel(false)}
+              onListaCambiada={() => void refetchConversations()}
             />
           </div>
         )}

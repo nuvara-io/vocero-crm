@@ -18,6 +18,7 @@ import {
   type ConnectorId,
 } from "@/lib/agenda-connectors";
 import { ConnectorCredentials } from "@/components/settings/connector-credentials";
+import { festivosDe, PAISES_FESTIVOS, type PaisFestivos } from "@/lib/festivos";
 
 /**
  * 015 — Ajustes → Agenda: cuándo atiende el negocio y cómo se entrega la
@@ -37,7 +38,20 @@ type Settings = {
   timezone: string;
   connector: ConnectorId;
   meetingLink: string | null;
+  closedDates: string[];
+  holidayCountry: PaisFestivos | null;
 };
+
+/** 067 — «2026-11-16» → «lun 16 nov 2026», sin depender de la zona del navegador. */
+function fechaCorta(iso: string): string {
+  return new Intl.DateTimeFormat("es-CO", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(`${iso}T00:00:00Z`));
+}
 
 const DAYS: { key: DayKey; label: string }[] = [
   { key: "mon", label: "Lunes" },
@@ -57,6 +71,7 @@ export function AgendaClient() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [nuevaFecha, setNuevaFecha] = useState("");
 
   useEffect(() => {
     void (async () => {
@@ -144,6 +159,8 @@ export function AgendaClient() {
         meetingLink: settings.meetingLink?.trim()
           ? settings.meetingLink.trim()
           : null,
+        closedDates: settings.closedDates,
+        holidayCountry: settings.holidayCountry,
       }),
     }).catch(() => null);
     setSaving(false);
@@ -294,6 +311,91 @@ export function AgendaClient() {
               onChange={(e) => patch({ timezone: e.target.value })}
               placeholder="America/Mexico_City"
             />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Días sin citas</CardTitle>
+          <CardDescription>
+            Festivos y cierres: esos días no se ofrecen aunque el horario de
+            arriba los abra. Las citas que ya estaban agendadas no se tocan.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <label className="flex cursor-pointer items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-4 w-4 accent-[var(--accent)]"
+              checked={settings.holidayCountry === "CO"}
+              onChange={(e) => patch({ holidayCountry: e.target.checked ? "CO" : null })}
+            />
+            <span>
+              Cerrar los festivos de {PAISES_FESTIVOS.CO}
+              {settings.holidayCountry === "CO" && (
+                <span className="mt-1 block text-xs text-text-3">
+                  Próximos:{" "}
+                  {(() => {
+                    const hoy = new Date().toISOString().slice(0, 10);
+                    const anio = Number(hoy.slice(0, 4));
+                    return [...festivosDe("CO", anio), ...festivosDe("CO", anio + 1)]
+                      .filter((f) => f >= hoy)
+                      .slice(0, 4)
+                      .map(fechaCorta)
+                      .join(" · ");
+                  })()}
+                </span>
+              )}
+            </span>
+          </label>
+
+          <div className="space-y-2">
+            <Label htmlFor="cerrada">Otras fechas cerradas</Label>
+            <div className="flex gap-2">
+              <Input
+                id="cerrada"
+                type="date"
+                value={nuevaFecha}
+                onChange={(e) => setNuevaFecha(e.target.value)}
+                className="max-w-[200px]"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                disabled={!nuevaFecha || settings.closedDates.includes(nuevaFecha)}
+                onClick={() => {
+                  patch({ closedDates: [...settings.closedDates, nuevaFecha].sort() });
+                  setNuevaFecha("");
+                }}
+              >
+                Agregar
+              </Button>
+            </div>
+            {settings.closedDates.length === 0 ? (
+              <p className="text-xs text-text-3">Ninguna.</p>
+            ) : (
+              <ul className="flex flex-wrap gap-1.5">
+                {settings.closedDates.map((d) => (
+                  <li
+                    key={d}
+                    className="inline-flex items-center gap-1 rounded-full border border-border-strong bg-chip py-0.5 pl-2.5 pr-1 text-xs"
+                  >
+                    {fechaCorta(d)}
+                    <button
+                      type="button"
+                      aria-label={`Quitar ${fechaCorta(d)}`}
+                      onClick={() =>
+                        patch({ closedDates: settings.closedDates.filter((x) => x !== d) })
+                      }
+                      className="rounded-full px-1 text-text-3 hover:bg-accent hover:text-foreground"
+                    >
+                      ×
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </CardContent>
       </Card>

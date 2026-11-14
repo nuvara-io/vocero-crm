@@ -6,6 +6,7 @@ import {
   isConnectorId,
   type ConnectorId,
 } from "@/lib/agenda-connectors";
+import { PAISES_FESTIVOS, type PaisFestivos } from "@/lib/festivos";
 import {
   isValidInterval,
   isValidTimeZone,
@@ -43,6 +44,10 @@ export type CalendarSettings = {
   connector: ConnectorId;
   /** Sala fija del conector `enlace-fijo`; null ⇒ citas sin link. */
   meetingLink: string | null;
+  /** 067 — Fechas `YYYY-MM-DD` sin citas (vacaciones, cierres). */
+  closedDates: string[];
+  /** 067 — País cuyos festivos se cierran solos; null = ninguno. */
+  holidayCountry: PaisFestivos | null;
 };
 
 /** Lo que ve una instancia recién encendida: útil sin configurar nada. */
@@ -55,6 +60,8 @@ export const DEFAULT_CALENDAR_SETTINGS: CalendarSettings = {
   timezone: DEFAULT_TIMEZONE,
   connector: DEFAULT_CONNECTOR,
   meetingLink: null,
+  closedDates: [],
+  holidayCountry: null,
 };
 
 export const LIMITS = {
@@ -89,6 +96,8 @@ export async function getSettings(
     // puede dejar la agenda inservible: se degrada al soberano.
     connector: isConnectorId(row.connector) ? row.connector : DEFAULT_CONNECTOR,
     meetingLink: row.meetingLink,
+    closedDates: normalizeClosedDates(row.closedDates),
+    holidayCountry: isPaisFestivos(row.holidayCountry) ? row.holidayCountry : null,
   };
 }
 
@@ -106,10 +115,12 @@ export class CalendarSettingsError extends Error {
  * comprobación que no ocurre.
  */
 export type CalendarSettingsInput = Partial<
-  Omit<CalendarSettings, "weeklyHours" | "connector">
+  Omit<CalendarSettings, "weeklyHours" | "connector" | "closedDates" | "holidayCountry">
 > & {
   weeklyHours?: unknown;
   connector?: string;
+  closedDates?: unknown;
+  holidayCountry?: string | null;
 };
 
 export async function upsertSettings(
@@ -127,6 +138,12 @@ export async function upsertSettings(
   const connector = input.connector ?? current.connector;
   if (!isConnectorId(connector)) {
     throw new CalendarSettingsError(`Conector desconocido: ${connector}`);
+  }
+
+  const holidayCountry =
+    input.holidayCountry !== undefined ? input.holidayCountry : current.holidayCountry;
+  if (holidayCountry !== null && !isPaisFestivos(holidayCountry)) {
+    throw new CalendarSettingsError(`País de festivos desconocido: ${holidayCountry}`);
   }
 
   const next: CalendarSettings = {
@@ -158,6 +175,10 @@ export async function upsertSettings(
     meetingLink: normalizeLink(
       input.meetingLink !== undefined ? input.meetingLink : current.meetingLink
     ),
+    closedDates: normalizeClosedDates(
+      input.closedDates !== undefined ? input.closedDates : current.closedDates
+    ),
+    holidayCountry,
   };
 
   const db = getDb();
@@ -170,6 +191,8 @@ export async function upsertSettings(
     timezone: next.timezone,
     connector: next.connector,
     meetingLink: next.meetingLink,
+    closedDates: next.closedDates,
+    holidayCountry: next.holidayCountry,
   };
   await db
     .insert(schema.calendarSettings)
@@ -204,6 +227,29 @@ export function normalizeWeeklyHours(input: unknown): WeeklyHours {
     if (valid.length > 0) out[day] = valid;
   }
   return out;
+}
+
+/** 067 — Tope de fechas cerradas a mano: sobra para un año de cierres. */
+export const MAX_CLOSED_DATES = 120;
+
+/**
+ * 067 — Solo fechas `YYYY-MM-DD` reales, sin repetir y ordenadas. Como el
+ * horario, se limpia en vez de rechazar: una fecha mal escrita no tumba el
+ * guardado.
+ */
+export function normalizeClosedDates(input: unknown): string[] {
+  if (!Array.isArray(input)) return [];
+  const validas = input.filter(
+    (d): d is string =>
+      typeof d === "string" &&
+      /^\d{4}-\d{2}-\d{2}$/.test(d) &&
+      new Date(`${d}T00:00:00Z`).toISOString().slice(0, 10) === d
+  );
+  return [...new Set(validas)].sort().slice(0, MAX_CLOSED_DATES);
+}
+
+function isPaisFestivos(v: unknown): v is PaisFestivos {
+  return typeof v === "string" && v in PAISES_FESTIVOS;
 }
 
 /** Cadena vacía o espacios ⇒ null (el campo es opcional de verdad). */

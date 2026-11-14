@@ -61,6 +61,34 @@ export async function listConversations(
     where l.contact_id = ${schema.contact.id}
     limit 1
   )`;
+  // 067 — Lo que la bandeja necesita para archivar, asignar, dar seguimiento
+  // y actuar en lote sin pedir cada lead por separado.
+  const stageKindSql = sql<string | null>`(
+    select s.kind from lead l
+    join pipeline_stage s on s.id = l.stage_id
+    where l.contact_id = ${schema.contact.id}
+    limit 1
+  )`;
+  const leadIdSql = sql<string | null>`(
+    select l.id from lead l where l.contact_id = ${schema.contact.id} limit 1
+  )`;
+  const assigneeIdSql = sql<string | null>`(
+    select l.assigned_user_id from lead l where l.contact_id = ${schema.contact.id} limit 1
+  )`;
+  const assigneeNameSql = sql<string | null>`(
+    select u.name from lead l
+    join "user" u on u.id = l.assigned_user_id
+    where l.contact_id = ${schema.contact.id}
+    limit 1
+  )`;
+  const lastDirectionSql = sql<string | null>`(
+    select m.direction
+    from message m
+    where m.organization_id = ${schema.conversation.organizationId}
+      and m.conversation_id = ${schema.conversation.id}
+    order by m.created_at desc
+    limit 1
+  )`;
 
   const rows = await db
     .select({
@@ -68,6 +96,11 @@ export async function listConversations(
       contact: schema.contact,
       preview: previewSql,
       stageName: stageSql,
+      stageKind: stageKindSql,
+      leadId: leadIdSql,
+      assigneeId: assigneeIdSql,
+      assigneeName: assigneeNameSql,
+      lastDirection: lastDirectionSql,
       anuncio: anuncioDeLista,
     })
     .from(schema.conversation)
@@ -92,9 +125,20 @@ export async function listConversations(
       r.contact,
       r.preview,
       r.stageName,
-      aAnuncioDeLista(r.anuncio)
+      aAnuncioDeLista(r.anuncio),
+      {
+        stageKind: aStageKind(r.stageKind),
+        leadId: r.leadId,
+        assignee:
+          r.assigneeId && r.assigneeName ? { id: r.assigneeId, name: r.assigneeName } : null,
+        lastDirection: r.lastDirection === "in" || r.lastDirection === "out" ? r.lastDirection : null,
+      }
     )
   );
+}
+
+function aStageKind(kind: string | null): ConversationDto["stageKind"] {
+  return kind === "open" || kind === "won" || kind === "lost" ? kind : null;
 }
 
 export async function getConversation(
@@ -155,7 +199,13 @@ export function serializeConversation(
   contact: typeof schema.contact.$inferSelect,
   preview: string | null = null,
   stageName: string | null = null,
-  anuncio: ConversationDto["anuncio"] = null
+  anuncio: ConversationDto["anuncio"] = null,
+  lista: Pick<ConversationDto, "stageKind" | "leadId" | "assignee" | "lastDirection"> = {
+    stageKind: null,
+    leadId: null,
+    assignee: null,
+    lastDirection: null,
+  }
 ): ConversationDto {
   const caps = capabilitiesFor(c.channel);
   // 024: la extensión humana solo existe en los canales que la declaran.
@@ -192,6 +242,9 @@ export function serializeConversation(
     },
     preview,
     anuncio,
+    // 067
+    archivedAt: contact.archivedAt?.toISOString() ?? null,
+    ...lista,
   };
 }
 

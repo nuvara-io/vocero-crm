@@ -4,6 +4,8 @@ import { HANDOFF_LABELS } from "@/lib/eventos-hilo";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
+  Archive,
+  ArchiveRestore,
   Cable,
   Check,
   ChevronRight,
@@ -33,6 +35,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { FichaPanel } from "@/components/ficha-panel";
 import { DeleteConversationDialog } from "./delete-conversation-dialog";
+import { aplicarLote, nombreCorto, useEquipo } from "@/lib/equipo";
 
 
 export function ContactPanel({
@@ -41,6 +44,7 @@ export function ContactPanel({
   onPatchConversation,
   onDeleteConversation,
   onClose,
+  onListaCambiada,
 }: {
   conversation: ConversationDto;
   /** Aumenta con cada evento SSE relevante: dispara un refetch en vivo. */
@@ -52,7 +56,21 @@ export function ContactPanel({
   /** 026 — Ausente = quien mira no puede eliminar: no se le ofrece. */
   onDeleteConversation?: (alsoContact: boolean) => Promise<string | null>;
   onClose: () => void;
+  /** 067 — Tras asignar o archivar: la Bandeja recarga su lista. */
+  onListaCambiada?: () => void;
 }) {
+  const equipo = useEquipo();
+  const [errorLote, setErrorLote] = useState<string | null>(null);
+  const [aplicando, setAplicando] = useState(false);
+
+  async function lote(accion: Parameters<typeof aplicarLote>[1]) {
+    setAplicando(true);
+    setErrorLote(null);
+    const err = await aplicarLote([conversation.id], accion);
+    setAplicando(false);
+    if (err) setErrorLote(err);
+    onListaCambiada?.();
+  }
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [notes, setNotes] = useState("");
   const [ficha, setFicha] = useState<FichaDto>({});
@@ -317,6 +335,66 @@ export function ContactPanel({
               <AnuncioOrigen anuncio={anuncio} />
             </div>
           )}
+        </section>
+
+        {/* 067 — Quién lleva este lead (demostración, cierre, seguimiento) y
+            archivarlo cuando ya no hay nada que hacer en la Bandeja. */}
+        <section className="border-b p-4">
+          <p className="kicker mb-2">Responsable</p>
+          {conversation.assignee ? (
+            <p className="mb-2 flex items-center gap-1.5 text-[13px]">
+              <UserRound className="h-3.5 w-3.5 shrink-0 text-brand-text" strokeWidth={1.8} />
+              <span>
+                <span className="font-semibold">{nombreCorto(conversation.assignee.name)}</span>{" "}
+                hace el seguimiento
+              </span>
+            </p>
+          ) : (
+            <p className="mb-2 text-[12px] text-text-3">Nadie lo tiene a cargo todavía.</p>
+          )}
+          {conversation.leadId ? (
+            <select
+              aria-label="Responsable del lead"
+              disabled={aplicando || equipo === null}
+              value={conversation.assignee?.id ?? ""}
+              onChange={(e) => void lote({ accion: "asignar", userId: e.target.value || null })}
+              className="w-full rounded-md border border-border-strong bg-background px-2 py-1.5 text-[13px]"
+            >
+              <option value="">Sin responsable</option>
+              {(equipo ?? []).map((m) => (
+                <option key={m.userId} value={m.userId}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <p className="text-[12px] text-text-3">Este contacto aún no tiene lead.</p>
+          )}
+          <Button
+            size="sm"
+            variant="outline"
+            className="mt-2.5 w-full"
+            disabled={aplicando}
+            onClick={() => void lote({ accion: "archivar", archivado: !conversation.archivedAt })}
+          >
+            {conversation.archivedAt ? (
+              <>
+                <ArchiveRestore className="h-4 w-4" strokeWidth={1.7} />
+                Sacar de archivadas
+              </>
+            ) : (
+              <>
+                <Archive className="h-4 w-4" strokeWidth={1.7} />
+                Archivar
+              </>
+            )}
+          </Button>
+          {conversation.archivedAt && (
+            <p className="mt-1.5 text-[11px] text-text-3">
+              Archivada: no sale en la Bandeja. Si escribe de nuevo, vuelve sola.
+            </p>
+          )}
+          {errorLote && <p className="mt-1.5 text-[11px] text-destructive">{errorLote}</p>}
         </section>
 
         {/* Stepper de etapa */}

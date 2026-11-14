@@ -252,6 +252,14 @@ export const lead = pgTable(
      */
     priority: text("priority", { enum: ["alta", "media", "baja"] }),
     priorityUpdatedAt: timestamp("priority_updated_at"),
+    /**
+     * 067 — Quién del equipo lleva este lead (hace la demostración o cierra).
+     * NULL = sin asignar. Si la persona sale del equipo, el lead queda sin
+     * asignar en vez de apuntar a alguien que ya no está.
+     */
+    assignedUserId: text("assigned_user_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
     lastActivityAt: timestamp("last_activity_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -259,6 +267,7 @@ export const lead = pgTable(
   (t) => [
     uniqueIndex("lead_contact_uq").on(t.contactId),
     index("lead_org_stage_idx").on(t.organizationId, t.stageId, t.position),
+    index("lead_org_assigned_idx").on(t.organizationId, t.assignedUserId),
   ]
 );
 
@@ -809,6 +818,16 @@ export const calendarSettings = pgTable(
     connector: text("connector").notNull().default("enlace-fijo"),
     /** Sala fija del conector `enlace-fijo`; null ⇒ citas sin link. */
     meetingLink: text("meeting_link"),
+    /**
+     * 067 — Días sin citas aunque el horario semanal los abra: vacaciones,
+     * cierres. Fechas de pared `YYYY-MM-DD` en la zona del negocio.
+     */
+    closedDates: jsonb("closed_dates").$type<string[]>().notNull().default([]),
+    /**
+     * 067 — País cuyos festivos se cierran solos (hoy solo `CO`). NULL = no
+     * se cierra ningún festivo: el comportamiento de antes.
+     */
+    holidayCountry: text("holiday_country", { enum: ["CO"] }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },

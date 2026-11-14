@@ -36,6 +36,16 @@ export type ConversationDto = {
     /** `post` si fue una publicación y no un anuncio. */
     sourceType: string | null;
   } | null;
+  /** 067 — El contacto se archivó: la bandeja lo esconde salvo en «Archivadas». */
+  archivedAt: string | null;
+  /** 067 — Tipo de la etapa: `won`/`lost` ya no piden seguimiento. */
+  stageKind: "open" | "won" | "lost" | null;
+  /** 067 — El lead, para moverlo o asignarlo desde la lista. */
+  leadId: string | null;
+  /** 067 — Quién del equipo lleva el lead (demostración o cierre). */
+  assignee: { id: string; name: string } | null;
+  /** 067 — Quién habló último: `out` = esperamos respuesta del cliente. */
+  lastDirection: "in" | "out" | null;
 };
 
 /** 018 — De qué anuncio llegó un contacto, como lo ve la bandeja. */

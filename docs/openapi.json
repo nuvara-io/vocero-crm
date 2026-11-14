@@ -83,6 +83,80 @@
         }
       }
     },
+    "/api/bot/plataforma": {
+      "post": {
+        "summary": "Avisar quién ya se registró o activó su cuenta en la plataforma del negocio",
+        "description": "067 — Mueve al lead hacia adelante: «registrado» a la etapa abierta con ese nombre (por defecto «Registrado») y «activado» a la primera etapa ganada, y al activar archiva el contacto. Encuentra al contacto por teléfono (identidad de WhatsApp; un celular colombiano de 10 dígitos gana el 57) o por el correo de la ficha (`correo` o `email`). Idempotente: nunca devuelve a nadie de etapa.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "avisos"
+                ],
+                "properties": {
+                  "avisos": {
+                    "type": "array",
+                    "maxItems": 500,
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "estado"
+                      ],
+                      "properties": {
+                        "telefono": {
+                          "type": "string",
+                          "examples": [
+                            "3001234567"
+                          ]
+                        },
+                        "email": {
+                          "type": "string",
+                          "format": "email"
+                        },
+                        "estado": {
+                          "type": "string",
+                          "enum": [
+                            "registrado",
+                            "activado"
+                          ]
+                        },
+                        "etapaRegistrado": {
+                          "type": "string",
+                          "examples": [
+                            "Registrado"
+                          ]
+                        },
+                        "archivar": {
+                          "type": "boolean",
+                          "description": "Al activar, archiva el contacto (por defecto true)"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Cuántos contactos se encontraron, se movieron y se archivaron"
+          },
+          "401": {
+            "description": "Sin llave del bot o llave incorrecta"
+          },
+          "409": {
+            "description": "La instancia aún no tiene organización"
+          },
+          "422": {
+            "description": "Cuerpo inválido"
+          }
+        }
+      }
+    },
     "/api/bot/stage": {
       "post": {
         "summary": "Mover al lead a una etapa siguiente del pipeline",

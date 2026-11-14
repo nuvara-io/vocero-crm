@@ -13,6 +13,8 @@ export const GET = withAuth(async (session) => {
   const members = await db
     .select({
       id: schema.member.id,
+      // 067 — El usuario, para asignarle leads.
+      userId: schema.member.userId,
       role: schema.member.role,
       createdAt: schema.member.createdAt,
       name: schema.user.name,
@@ -24,6 +26,7 @@ export const GET = withAuth(async (session) => {
   return Response.json({
     members: members.map((m) => ({
       id: m.id,
+      userId: m.userId,
       role: m.role,
       name: m.name,
       email: m.email,

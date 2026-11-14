@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Clock3, Inbox, Megaphone, SlidersHorizontal, Search, Sparkles, UserRound, X } from "lucide-react";
+import { CheckSquare, Clock3, Hourglass, Inbox, Megaphone, SlidersHorizontal, Search, Sparkles, Square, UserCheck, UserRound, X } from "lucide-react";
 import type { ConversationDto } from "@/lib/types";
 import { etiquetaDeOrigen, titularDeOrigen } from "@/lib/anuncios";
 import { CHANNEL_LABEL, type Channel } from "@/lib/channels";
@@ -15,7 +15,9 @@ import { emptyInboxDescription, formatTime, previewText } from "./helpers";
 import { EVENTO_BORRADOR, leerBorrador } from "@/lib/borradores";
 import { atajoBandeja, esCampoDeTexto, sirveEscribiendo, vecina } from "@/lib/atajos";
 import { hayDialogoAbierto } from "@/components/atajos-globales";
-import { etiquetaVence, porVencer } from "@/lib/filtros-bandeja";
+import { DIAS_SEGUIMIENTO, diasDesde, etiquetaVence, pideSeguimiento, porVencer } from "@/lib/filtros-bandeja";
+import { nombreCorto, useEquipo } from "@/lib/equipo";
+import { LoteBar } from "./lote-bar";
 
 /* Puntos de etapa: los tokens del tema, no hex copiados del tema claro —
    así siguen al acento white-label y se recalculan en oscuro. */
@@ -87,6 +89,7 @@ export function ConversationList({
   selectedId,
   onSelect,
   onSeeded,
+  onListaCambiada,
 }: {
   conversations: ConversationDto[] | null;
   /** Canales encendidos en esta instancia (ADR-001). */
@@ -94,10 +97,21 @@ export function ConversationList({
   selectedId: string | null;
   onSelect: (id: string) => void;
   onSeeded: () => void;
+  /** 067 — Tras una acción en lote: la Bandeja recarga su lista. */
+  onListaCambiada?: () => void;
 }) {
   const [query, setQuery] = useState("");
-  // 052 (enmienda) — Dos pestañas y un botón «Filtrar» con lo demás.
-  const [filter, setFilter] = useState<"all" | "unread">("all");
+  // 052 (enmienda) — Pestañas y un botón «Filtrar» con lo demás. 067 suma
+  // «Archivadas»: lo archivado no sale en las otras dos.
+  const [filter, setFilter] = useState<"all" | "unread" | "archived">("all");
+  // 067 — Responsable ("all" | "none" | userId) y días de seguimiento (0 = sin filtro).
+  const [responsable, setResponsable] = useState<string>("all");
+  const [diasSeguimiento, setDiasSeguimiento] = useState(0);
+  const equipo = useEquipo();
+  // 067 — Modo selección para las acciones en lote.
+  const [seleccionando, setSeleccionando] = useState(false);
+  const [seleccion, setSeleccion] = useState<Set<string>>(new Set());
+  const ahora = new Date();
   const [soloPorVencer, setSoloPorVencer] = useState(false);
   const [soloAnuncios, setSoloAnuncios] = useState(false);
   const [menuFiltros, setMenuFiltros] = useState(false);
@@ -192,20 +206,58 @@ export function ConversationList({
   // Lo del menú «Filtrar» se aplica antes de las pestañas: «Todas» y «No
   // leídas» cuentan dentro de lo filtrado.
   const filtrado = inInbox.filter(
-    (c) => (!soloPorVencer || porVencer(c)) && (!soloAnuncios || c.anuncio !== null)
+    (c) =>
+      (!soloPorVencer || porVencer(c)) &&
+      (!soloAnuncios || c.anuncio !== null) &&
+      (responsable === "all" ||
+        (responsable === "none" ? c.assignee === null : c.assignee?.id === responsable)) &&
+      (diasSeguimiento === 0 || pideSeguimiento(c, diasSeguimiento, ahora))
   );
-  const unreadCount = filtrado.filter((c) => c.unreadCount > 0).length;
-  const visible = filter === "unread" ? filtrado.filter((c) => c.unreadCount > 0) : filtrado;
+  const activas = filtrado.filter((c) => !c.archivedAt);
+  const archivadas = filtrado.filter((c) => c.archivedAt);
+  const unreadCount = activas.filter((c) => c.unreadCount > 0).length;
+  const visible =
+    filter === "archived"
+      ? archivadas
+      : filter === "unread"
+        ? activas.filter((c) => c.unreadCount > 0)
+        : activas;
   visibleRef.current = visible.map((c) => c.id);
   const pestanas: { id: typeof filter; label: string; count: number }[] = [
-    { id: "all", label: "Todas", count: filtrado.length },
+    { id: "all", label: "Todas", count: activas.length },
     { id: "unread", label: "No leídas", count: unreadCount },
+    { id: "archived", label: "Archivadas", count: archivadas.length },
   ];
-  const nFiltros = (stage !== "all" ? 1 : 0) + (soloPorVencer ? 1 : 0) + (soloAnuncios ? 1 : 0);
+  const nombreResponsable =
+    responsable === "none"
+      ? "Sin responsable"
+      : (equipo?.find((m) => m.userId === responsable)?.name ?? "…");
+  const nFiltros =
+    (stage !== "all" ? 1 : 0) +
+    (soloPorVencer ? 1 : 0) +
+    (soloAnuncios ? 1 : 0) +
+    (responsable !== "all" ? 1 : 0) +
+    (diasSeguimiento > 0 ? 1 : 0);
   function limpiarFiltros() {
     setStage("all");
     setSoloPorVencer(false);
     setSoloAnuncios(false);
+    setResponsable("all");
+    setDiasSeguimiento(0);
+  }
+  // 067 — Lo seleccionado que sigue a la vista (un filtro puede esconderlo).
+  const seleccionVisible = visible.filter((c) => seleccion.has(c.id));
+  function alternar(id: string) {
+    setSeleccion((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+  function salirDeSeleccion() {
+    setSeleccionando(false);
+    setSeleccion(new Set());
   }
   // Con un solo canal encendido no hay bandejas que distinguir: ni marca en
   // los renglones ni filtro. La pantalla queda exactamente como antes de 014.
@@ -254,6 +306,22 @@ export function ConversationList({
         <div className="flex items-center gap-2">
           <h2 className="text-[17px] font-bold tracking-tight">Bandeja</h2>
           <span className="font-mono text-[12px] text-text-3">{conversations.length}</span>
+          {conversations.length > 0 && (
+            <button
+              type="button"
+              onClick={() => (seleccionando ? salirDeSeleccion() : setSeleccionando(true))}
+              aria-pressed={seleccionando}
+              className={cn(
+                "flex items-center gap-1 rounded-md px-2 py-1 text-[12px] font-semibold transition-colors",
+                FOCO_SEPARADO,
+                multiChannel ? "" : "ml-auto",
+                seleccionando ? "bg-brand-tint text-brand-text" : "text-text-2 hover:bg-subtle"
+              )}
+            >
+              <CheckSquare className="h-3.5 w-3.5" strokeWidth={1.9} />
+              {seleccionando ? "Cancelar" : "Seleccionar"}
+            </button>
+          )}
           {multiChannel && (
             <div className="ml-auto flex items-center gap-1">
               {channels.map((ch) => {
@@ -358,6 +426,45 @@ export function ConversationList({
                     </select>
                   </label>
                 )}
+                <label className="block space-y-1">
+                  <span className="kicker text-text-3">Responsable</span>
+                  <select
+                    value={responsable}
+                    onChange={(e) => setResponsable(e.target.value)}
+                    aria-label="Filtrar por responsable"
+                    className={cn(
+                      "w-full rounded-md border border-border-strong bg-background px-2 py-1.5 text-[13px]",
+                      FOCO_SEPARADO
+                    )}
+                  >
+                    <option value="all">Cualquiera</option>
+                    <option value="none">Sin responsable</option>
+                    {(equipo ?? []).map((m) => (
+                      <option key={m.userId} value={m.userId}>
+                        {m.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block space-y-1">
+                  <span className="kicker text-text-3">Seguimiento pendiente</span>
+                  <select
+                    value={diasSeguimiento}
+                    onChange={(e) => setDiasSeguimiento(Number(e.target.value))}
+                    aria-label="Filtrar por días sin respuesta"
+                    className={cn(
+                      "w-full rounded-md border border-border-strong bg-background px-2 py-1.5 text-[13px]",
+                      FOCO_SEPARADO
+                    )}
+                  >
+                    <option value={0}>Todas</option>
+                    {DIAS_SEGUIMIENTO.map((d) => (
+                      <option key={d} value={d}>
+                        Sin respuesta hace {d} {d === 1 ? "día" : "días"} o más
+                      </option>
+                    ))}
+                  </select>
+                </label>
                 {/* Como antes: sin ninguna, la casilla no aparece (salvo que esté marcada). */}
                 {(venciendo.length > 0 || soloPorVencer) && (
                   <label className="flex cursor-pointer items-center gap-2 text-[13px]">
@@ -382,9 +489,6 @@ export function ConversationList({
                     <span className="flex-1">De anuncios</span>
                     <span className="font-mono text-[11px] text-text-3">{deAnuncios.length}</span>
                   </label>
-                )}
-                {stages.length === 0 && venciendo.length === 0 && deAnuncios.length === 0 && nFiltros === 0 && (
-                  <p className="text-[13px] text-text-3">Todavía no hay nada por qué filtrar.</p>
                 )}
                 {nFiltros > 0 && (
                   <button
@@ -411,9 +515,40 @@ export function ConversationList({
             {soloAnuncios && (
               <FiltroPuesto texto="De anuncios" onQuitar={() => setSoloAnuncios(false)} />
             )}
+            {responsable !== "all" && (
+              <FiltroPuesto
+                texto={`Responsable: ${nombreResponsable}`}
+                onQuitar={() => setResponsable("all")}
+              />
+            )}
+            {diasSeguimiento > 0 && (
+              <FiltroPuesto
+                texto={`Sin respuesta ${diasSeguimiento}+ ${diasSeguimiento === 1 ? "día" : "días"}`}
+                onQuitar={() => setDiasSeguimiento(0)}
+              />
+            )}
           </div>
         )}
       </div>
+
+      {seleccionando && visible.length > 0 && (
+        <div className="flex items-center gap-2 border-b px-4 py-2 text-[12.5px]">
+          <button
+            type="button"
+            onClick={() =>
+              setSeleccion(
+                seleccionVisible.length === visible.length
+                  ? new Set()
+                  : new Set(visible.map((c) => c.id))
+              )
+            }
+            className="font-semibold text-brand-ink hover:underline"
+          >
+            {seleccionVisible.length === visible.length ? "Quitar selección" : `Seleccionar las ${visible.length}`}
+          </button>
+          <span className="ml-auto font-mono text-text-3">{seleccionVisible.length} elegidas</span>
+        </div>
+      )}
 
       <div className="flex-1 overflow-y-auto">
         {loading ? (
@@ -439,15 +574,25 @@ export function ConversationList({
               return (
                 <li key={c.id} className="relative border-b border-border">
                   <button
-                    onClick={() => onSelect(c.id)}
+                    onClick={() => (seleccionando ? alternar(c.id) : onSelect(c.id))}
                     // 055 — Cuál está abierta, para Alt+J/K y los lectores de pantalla.
                     aria-current={active ? "true" : undefined}
+                    aria-pressed={seleccionando ? seleccion.has(c.id) : undefined}
                     className={cn(
                       "flex w-full items-start gap-[11px] px-4 py-[var(--row-py)] text-left transition-colors",
                       "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
                       active ? "bg-[var(--bg-active)]" : "hover:bg-row-hover"
                     )}
                   >
+                    {seleccionando && (
+                      <span className="mt-2.5 shrink-0 text-brand-text" aria-hidden>
+                        {seleccion.has(c.id) ? (
+                          <CheckSquare className="h-4 w-4" strokeWidth={2} />
+                        ) : (
+                          <Square className="h-4 w-4 text-text-3" strokeWidth={1.7} />
+                        )}
+                      </span>
+                    )}
                     <span className="relative shrink-0">
                       <ContactAvatar name={c.contact.name} seed={c.contact.id} size="lg" />
                       {c.windowOpen && (
@@ -502,7 +647,22 @@ export function ConversationList({
                           </span>
                         )}
                       </span>
-                      <span className="mt-1.5 flex items-center gap-1.5">
+                      <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                        {c.assignee && (
+                          <span
+                            className="inline-flex items-center gap-1 rounded-full border border-brand-soft bg-brand-tint px-2 py-0.5 text-[11px] font-medium text-brand-text"
+                            title={`${c.assignee.name} hace el seguimiento`}
+                          >
+                            <UserCheck className="h-3 w-3" strokeWidth={1.8} />
+                            {nombreCorto(c.assignee.name)}
+                          </span>
+                        )}
+                        {pideSeguimiento(c, 2, ahora) && (
+                          <span className="inline-flex items-center gap-1 rounded-full border border-border-strong bg-chip px-2 py-0.5 text-[11px] text-text-2">
+                            <Hourglass className="h-3 w-3" strokeWidth={1.8} />
+                            Sin respuesta · {diasDesde(c.lastMessageAt, ahora)} d
+                          </span>
+                        )}
                         {c.stageName && (
                           <span className="inline-flex items-center gap-1.5 rounded-full border border-border-strong bg-chip px-2 py-0.5 text-[11px] font-medium text-text-2">
                             <span
@@ -551,6 +711,18 @@ export function ConversationList({
           </ul>
         )}
       </div>
+      {seleccionando && seleccionVisible.length > 0 && (
+        <LoteBar
+          conversaciones={seleccionVisible}
+          enArchivadas={filter === "archived"}
+          equipo={equipo ?? []}
+          onHecho={() => {
+            salirDeSeleccion();
+            onListaCambiada?.();
+          }}
+          onRefrescar={() => onListaCambiada?.()}
+        />
+      )}
       </div>
     </div>
   );

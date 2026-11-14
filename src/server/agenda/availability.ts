@@ -13,6 +13,7 @@ import {
   type SlotUtc,
 } from "@/lib/time/slots";
 import { getSettings, type CalendarSettings } from "@/server/agenda/settings";
+import { diasCerrados } from "@/lib/festivos";
 
 /**
  * 015 — Motor de disponibilidad:
@@ -37,7 +38,14 @@ export function buildCandidateSlots(
 ): SlotUtc[] {
   const tz = settings.timezone;
   const candidates: SlotUtc[] = [];
+  // 067 — Festivos y fechas cerradas a mano: el día no abre aunque el
+  // horario semanal diga que sí.
+  const cerrados = diasCerrados(fromISO, toISO, {
+    pais: settings.holidayCountry ?? null,
+    cerradas: settings.closedDates ?? [],
+  });
   for (const date of eachDateInRange(fromISO, toISO)) {
+    if (cerrados.has(date)) continue;
     const weekday = weekdayKeyOf(date, tz);
     if (!weekday) continue;
     const intervals = settings.weeklyHours[weekday] ?? [];

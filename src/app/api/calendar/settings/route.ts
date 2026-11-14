@@ -46,6 +46,10 @@ const putSchema = z.object({
     })
     .optional(),
   meetingLink: z.string().nullish(),
+  /** 067 — Fechas `YYYY-MM-DD` sin citas; las mal escritas se descartan. */
+  closedDates: z.array(z.string()).max(400).optional(),
+  /** 067 — `CO` cierra los festivos de Colombia; `null` los vuelve a abrir. */
+  holidayCountry: z.string().nullable().optional(),
 });
 
 /**

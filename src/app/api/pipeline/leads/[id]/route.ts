@@ -6,6 +6,7 @@ import { scoped } from "@/lib/db/tenant";
 import { publish } from "@/server/events/bus";
 import { moveLeadToStage } from "@/server/leads/stage-history";
 import { getBranding } from "@/server/branding";
+import { esDelEquipo } from "@/server/inbox/lote";
 
 export const dynamic = "force-dynamic";
 
@@ -45,6 +46,8 @@ const patchSchema = z.object({
   currency: z.string().length(3).nullable().optional(),
   /** `null` explícito la quita; ausente la deja como estaba. */
   priority: z.enum(["alta", "media", "baja"]).nullable().optional(),
+  /** 067 — Quién del equipo lo lleva; `null` lo deja sin asignar. */
+  assignedUserId: z.string().min(1).nullable().optional(),
 });
 
 export const PATCH = withAuth(async (session, req: Request, ctx: Params) => {
@@ -64,6 +67,16 @@ export const PATCH = withAuth(async (session, req: Request, ctx: Params) => {
       body.data.amountCents === null
         ? null
         : (body.data.currency ?? (await getBranding(session.organizationId)).currency);
+  }
+
+  if (body.data.assignedUserId !== undefined) {
+    if (
+      body.data.assignedUserId !== null &&
+      !(await esDelEquipo(session.organizationId, body.data.assignedUserId))
+    ) {
+      return apiError(422, "no_es_del_equipo", "Esa persona no es del equipo");
+    }
+    extra.assignedUserId = body.data.assignedUserId;
   }
 
   if (body.data.priority !== undefined) {

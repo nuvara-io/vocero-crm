@@ -535,6 +535,20 @@ export async function ingestInboundMessage(input: {
     })
     .where(eq(schema.conversation.id, conversation.id));
 
+  // 067 — Quien escribe de nuevo vuelve a la bandeja: archivar es para no ver
+  // lo que ya no se mueve, no para perder a alguien que retoma la charla.
+  if (contact.archivedAt) {
+    await db
+      .update(schema.contact)
+      .set({ archivedAt: null, updatedAt: new Date() })
+      .where(
+        and(
+          eq(schema.contact.organizationId, organizationId),
+          eq(schema.contact.id, contact.id)
+        )
+      );
+  }
+
   await onLeadActivity(organizationId, contact.id, waTimestamp);
 
   publish(organizationId, {
