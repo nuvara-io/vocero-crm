@@ -549,7 +549,10 @@ export async function ingestInboundMessage(input: {
       );
   }
 
-  await onLeadActivity(organizationId, contact.id, waTimestamp);
+  await onLeadActivity(organizationId, contact.id, waTimestamp, {
+    texto: input.text,
+    conAnuncio: Boolean(input.anuncio),
+  });
 
   publish(organizationId, {
     type: "message.new",

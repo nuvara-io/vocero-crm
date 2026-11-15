@@ -46,6 +46,8 @@ const prefixes = {
   sale: "vta",
   saleAttributionChange: "vac",
   commissionSettlement: "liq",
+  // 071 — seguimiento automático
+  followupSend: "fup",
 } as const;
 
 export type IdKind = keyof typeof prefixes;

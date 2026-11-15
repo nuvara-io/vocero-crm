@@ -63,7 +63,9 @@ export function localDateExpr(
 export function effectiveSourceExpr(
   organizationIdColumn: PgColumn,
   contactIdColumn: PgColumn,
-  sourceColumn: PgColumn
+  sourceColumn: PgColumn,
+  /** 071 — La pista deducida del primer mensaje (`web` / `meta`), al final. */
+  hintColumn?: PgColumn
 ): SQL<string | null> {
   return sql<string | null>`coalesce(${sourceColumn}, (
     select case when coalesce(primero."source_type", 'ad') = 'post' then null else 'anuncio' end
@@ -72,7 +74,7 @@ export function effectiveSourceExpr(
       and primero."contact_id" = ${contactIdColumn}
     order by primero."created_at" asc, primero."id" asc
     limit 1
-  ))`;
+  )${hintColumn ? sql`, ${hintColumn}` : sql``})`;
 }
 
 /**

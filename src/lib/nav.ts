@@ -148,6 +148,8 @@ export function settingsSections({
     // 049 — lo que el equipo inserta con «/atajo» en la Bandeja.
     { href: "/settings/quick-replies", label: "Respuestas rápidas" },
     { href: "/settings/team", label: "Equipo" },
+    // 071 — A quién le cae cada lead nuevo y qué pasa si deja de contestar.
+    { href: "/settings/seguimiento", label: "Reparto y seguimiento" },
   ];
   if (atribucion) negocio.push({ href: "/settings/ads", label: "Anuncios" });
 

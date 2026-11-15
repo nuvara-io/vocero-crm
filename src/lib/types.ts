@@ -124,6 +124,8 @@ export type TemplateDto = {
   body: string;
   status: "draft" | "pending" | "approved" | "rejected";
   rejectionReason: string | null;
+  /** 071 — Oculta en el redactor; en Meta sigue igual. */
+  hidden?: boolean;
 };
 
 export type StageDto = {
@@ -131,6 +133,8 @@ export type StageDto = {
   name: string;
   position: number;
   kind: "open" | "won" | "lost";
+  /** 071 — El cerebro no mueve aquí a nadie sin cita agendada. */
+  requiresBooking?: boolean;
 };
 
 /** Un dato de la ficha. Escalar a propósito: ver `server/bot/ficha`. */
@@ -201,7 +205,7 @@ export type SourceValue =
 
 export type SourceDto = {
   /** "desconocida" cuando nadie la capturó y no se pudo deducir. */
-  value: SourceValue | "desconocida";
+  value: SourceValue | "desconocida" | "web" | "meta";
   /** `deducida` = la infirió el sistema; `capturada` = la puso el dueño. */
   source: "capturada" | "deducida";
 };

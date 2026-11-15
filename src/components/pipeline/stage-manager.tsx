@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowDown, ArrowUp, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, CalendarCheck, Trash2 } from "lucide-react";
 import type { StageDto } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -28,6 +28,16 @@ export function StageManager({
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ name: name.trim() }),
+    }).catch(() => null);
+    onChanged();
+  }
+
+  /** 071 — Que el agente solo pueda mover aquí a quien tiene cita. */
+  async function toggleCita(stage: StageDto) {
+    await fetch(`/api/pipeline/stages/${stage.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ requiresBooking: !stage.requiresBooking }),
     }).catch(() => null);
     onChanged();
   }
@@ -111,6 +121,18 @@ export function StageManager({
                   {s.kind === "won" ? "ganado" : "perdido"}
                 </Badge>
               ) : (
+                <>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={s.requiresBooking ? "Exige cita: quitar" : "Exigir cita para que el agente mueva aquí"}
+                  aria-pressed={Boolean(s.requiresBooking)}
+                  title={s.requiresBooking ? "El agente solo mueve aquí a quien tiene cita agendada" : "Exigir cita agendada"}
+                  className={s.requiresBooking ? "text-brand-ink" : "text-text-3"}
+                  onClick={() => void toggleCita(s)}
+                >
+                  <CalendarCheck className="h-4 w-4" strokeWidth={1.8} />
+                </Button>
                 <Button
                   variant="ghost"
                   size="icon"
@@ -119,6 +141,7 @@ export function StageManager({
                 >
                   <Trash2 className="h-4 w-4" />
                 </Button>
+                </>
               )}
               <Button
                 variant="ghost"

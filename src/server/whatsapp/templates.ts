@@ -63,6 +63,7 @@ export function serializeTemplate(t: TemplateRow) {
     body: t.body,
     status: t.status,
     rejectionReason: t.rejectionReason,
+    hidden: t.hidden,
   };
 }
 

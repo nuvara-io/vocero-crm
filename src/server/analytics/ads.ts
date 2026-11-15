@@ -33,7 +33,7 @@ import {
  *    puede pasar de 100 %.
  */
 
-const FUENTES: readonly SourceKey[] = [...SOURCE_VALUES, "desconocida"];
+const FUENTES: readonly SourceKey[] = [...SOURCE_VALUES, "web", "meta", "desconocida"];
 
 /** Cuántas filas enseña la tabla por anuncio: más no se lee en una pantalla. */
 export const MAX_ANUNCIOS = 50;
@@ -81,7 +81,8 @@ async function conversacionesPorFuente(
       key: effectiveSourceExpr(
         schema.conversation.organizationId,
         schema.conversation.contactId,
-        schema.contact.source
+        schema.contact.source,
+        schema.contact.sourceHint
       ),
       n: sql<number>`count(*)::int`,
     })
@@ -130,7 +131,8 @@ async function prospectosPorFuente(
       key: effectiveSourceExpr(
         schema.lead.organizationId,
         schema.lead.contactId,
-        schema.contact.source
+        schema.contact.source,
+        schema.contact.sourceHint
       ),
       leads: sql<number>`count(*)::int`,
       won: sql<number>`count(*) filter (where ${schema.pipelineStage.kind} = 'won')::int`,

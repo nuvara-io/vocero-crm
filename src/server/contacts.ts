@@ -19,7 +19,7 @@ export function serializeContact(
     aiPaused: c.aiPaused,
     stageName,
     archivedAt: c.archivedAt?.toISOString() ?? null,
-    source: effectiveSource(c.source, llegoPorAnuncio),
+    source: effectiveSource(c.source, llegoPorAnuncio, c.sourceHint),
     priority,
     // Viaja siempre, aunque esté vacía: la pantalla necesita distinguir "aún
     // no la han llenado" de "este contacto no la trae".

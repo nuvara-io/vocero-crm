@@ -3,6 +3,7 @@ import { getDb, schema } from "@/lib/db";
 import { mediaDirStatus } from "@/server/media-dir";
 import { leerConfigDespacho } from "@/server/brains/config";
 import { iniciarWorker, tanda } from "@/server/dispatch/worker";
+import { iniciarSeguimiento } from "@/server/seguimiento/runner";
 import { cifrarSecretosEnClaro } from "@/server/zernio/secreto-guardado";
 import { barrido, iniciarBarrido } from "@/server/webhooks/worker";
 
@@ -122,4 +123,13 @@ export function resumeDispatch(): void {
 export function resumeWebhooks(): void {
   iniciarBarrido();
   void barrido();
+}
+
+/**
+ * 071 — El seguimiento automático: arranca siempre, pero cada pasada mira si
+ * está encendido en Ajustes → Seguimiento. Apagado (por defecto) no hace nada.
+ */
+export function resumeSeguimiento(): void {
+  if (process.env.NODE_ENV === "test") return;
+  iniciarSeguimiento();
 }

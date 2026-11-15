@@ -179,6 +179,12 @@ export const contact = pgTable(
       enum: ["anuncio", "organico", "referido", "conocido", "otro"],
     }),
     /**
+     * 071 — Pista de origen DEDUCIDA del primer mensaje cuando no hubo anuncio:
+     * `web` (el texto del enlace de la página o de las redes) o `meta` (el
+     * saludo automático de Meta sin datos de anuncio). Nunca pisa `source`.
+     */
+    sourceHint: text("source_hint", { enum: ["web", "meta"] }),
+    /**
      * 027 — El agente no le responde a esta persona: clientes, miembros,
      * proveedores — gente a la que el dueño quiere atender él mismo.
      *
@@ -219,6 +225,11 @@ export const pipelineStage = pgTable(
     kind: text("kind", { enum: ["open", "won", "lost"] })
       .notNull()
       .default("open"),
+    /**
+     * 071 — El cerebro no puede mover un lead aquí sin una cita agendada a
+     * futuro (p. ej. «Demo agendada»). Una persona sí puede.
+     */
+    requiresBooking: boolean("requires_booking").notNull().default(false),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (t) => [index("stage_org_pos_idx").on(t.organizationId, t.position)]
@@ -751,6 +762,8 @@ export const template = pgTable(
       .notNull()
       .default("draft"),
     rejectionReason: text("rejection_reason"),
+    /** 071 — Oculta en el redactor (p. ej. la plantilla de muestra de Meta). */
+    hidden: boolean("hidden").notNull().default(false),
     waTemplateId: text("wa_template_id"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -1598,3 +1611,33 @@ export const commissionSettings = pgTable("commission_settings", {
   updatedBy: text("updated_by").references(() => user.id, { onDelete: "set null" }),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
+
+/**
+ * 071 — Seguimiento automático: qué paso se le mandó a qué conversación, para
+ * no repetirlo. `anchor_at` es el último mensaje NUESTRO sin respuesta que lo
+ * originó: si el cliente contesta y luego vuelve a quedarse callado, el ciclo
+ * empieza de nuevo con otro ancla.
+ */
+export const followupSend = pgTable(
+  "followup_send",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    conversationId: text("conversation_id")
+      .notNull()
+      .references(() => conversation.id, { onDelete: "cascade" }),
+    /** 1, 2… o 0 = archivado por falta de respuesta. */
+    step: integer("step").notNull(),
+    anchorAt: timestamp("anchor_at").notNull(),
+    templateId: text("template_id"),
+    ok: boolean("ok").notNull().default(true),
+    error: text("error"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("followup_send_uq").on(t.conversationId, t.step, t.anchorAt),
+    index("followup_send_org_idx").on(t.organizationId, t.createdAt),
+  ]
+);

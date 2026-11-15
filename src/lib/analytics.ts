@@ -168,7 +168,7 @@ export type SalesBlockDto = {
 
 /* ── Origen y anuncios (solo conteos) ───────────────────────────── */
 
-export type SourceKey = SourceValue | "desconocida";
+export type SourceKey = SourceValue | "desconocida" | "web" | "meta";
 
 export type SourceRowDto = {
   value: SourceKey;

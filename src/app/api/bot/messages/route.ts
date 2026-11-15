@@ -6,6 +6,8 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { getDb, schema } from "@/lib/db";
 import { apiError, parseBody } from "@/lib/api";
+// 071 — El modelo a veces escribe LaTeX o Markdown que WhatsApp muestra literal.
+import { limpiarTextoParaWhatsApp } from "@/lib/crm-reglas";
 import { requireBotKey, resolveInstanceOrg } from "@/server/bot/auth";
 import { SendError, sendText } from "@/server/inbox/send";
 import { guardarRespuestaDePrueba } from "@/server/lab/sandbox";
@@ -72,7 +74,7 @@ export async function POST(req: Request) {
     const guardada = await guardarRespuestaDePrueba({
       organizationId,
       conversationId: body.data.conversationId,
-      text: body.data.text,
+      text: limpiarTextoParaWhatsApp(body.data.text),
     });
     return Response.json({ messageId: guardada.messageId, status: "sent" });
   }
@@ -81,7 +83,7 @@ export async function POST(req: Request) {
     const result = await sendText({
       conversationId: body.data.conversationId,
       organizationId,
-      text: body.data.text,
+      text: limpiarTextoParaWhatsApp(body.data.text),
       aiGenerated: true,
     });
     return Response.json({ messageId: result.messageId });

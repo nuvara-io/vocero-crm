@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, gt } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { scoped } from "@/lib/db/tenant";
 import { herramientasEfectivas } from "@/lib/agent-roles";
@@ -64,7 +64,7 @@ export type ResultadoEtapa =
   | {
       ok: false;
       status: 409;
-      code: "ai_paused" | "herramienta_apagada" | "etapa_no_permitida";
+      code: "ai_paused" | "herramienta_apagada" | "etapa_no_permitida" | "requiere_cita";
       message: string;
     }
   | { ok: false; status: 422; code: "etapa_desconocida"; message: string };
@@ -143,6 +143,7 @@ export async function moverEtapaPorElCerebro(input: {
         name: schema.pipelineStage.name,
         position: schema.pipelineStage.position,
         kind: schema.pipelineStage.kind,
+        requiresBooking: schema.pipelineStage.requiresBooking,
       })
       .from(schema.pipelineStage)
       .where(scoped(schema.pipelineStage.organizationId, organizationId))
@@ -173,6 +174,33 @@ export async function moverEtapaPorElCerebro(input: {
       code: "etapa_no_permitida",
       message: `No puedes mover al lead a «${destino.name}»: solo hacia adelante y a etapas abiertas. ${listaParaElModelo(siguientes)}`,
     };
+  }
+
+  // 071 — Etapas como «Demo agendada» exigen una cita real a futuro: el
+  // cerebro no puede dejar a alguien ahí solo por haberle ofrecido la demo.
+  if (destino.id !== lead.stageId && destino.requiresBooking) {
+    const citas = await db
+      .select({ id: schema.booking.id })
+      .from(schema.booking)
+      .where(
+        scoped(
+          schema.booking.organizationId,
+          organizationId,
+          eq(schema.booking.contactId, conv.contactId),
+          eq(schema.booking.status, "agendada"),
+          eq(schema.booking.isTest, false),
+          gt(schema.booking.scheduledAt, new Date())
+        )
+      )
+      .limit(1);
+    if (citas.length === 0) {
+      return {
+        ok: false,
+        status: 409,
+        code: "requiere_cita",
+        message: `Para mover al lead a «${destino.name}» primero reserva la cita en la agenda y confírmasela.`,
+      };
+    }
   }
 
   const res = await moveLeadToStage({

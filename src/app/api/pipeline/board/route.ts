@@ -45,6 +45,7 @@ export const GET = withAuth(async (session) => {
       name: s.name,
       position: s.position,
       kind: s.kind,
+      requiresBooking: s.requiresBooking,
     })),
     leads: leads.map((r) => ({
       id: r.lead.id,

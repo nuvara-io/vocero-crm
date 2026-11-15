@@ -60,7 +60,7 @@ export function LoteBar({
       .then((d: { templates?: TemplateDto[] }) =>
         // En lote solo caben plantillas sin variables o con una (el nombre).
         setTemplates(
-          (d.templates ?? []).filter((t) => t.status === "approved" && countVariables(t.body) <= 1)
+          (d.templates ?? []).filter((t) => t.status === "approved" && !t.hidden && countVariables(t.body) <= 1)
         )
       )
       .catch(() => setTemplates([]));

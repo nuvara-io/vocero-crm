@@ -1,4 +1,6 @@
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNotNull, isNull, ne, sql } from "drizzle-orm";
+import { deducirOrigenPorSaludo, elegirResponsable } from "@/lib/crm-reglas";
+import { ajustesCrm } from "@/server/crm-ajustes";
 import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import { recordLeadCreated } from "@/server/leads/stage-history";
@@ -12,7 +14,9 @@ import type { StageChangeSource } from "@/lib/types";
 export async function onLeadActivity(
   organizationId: string,
   contactId: string,
-  at: Date
+  at: Date,
+  /** 071 — El primer mensaje y si vino de un anuncio, para el lead nuevo. */
+  contexto: { texto?: string | null; conAnuncio?: boolean } = {}
 ): Promise<void> {
   const db = getDb();
 
@@ -30,7 +34,63 @@ export async function onLeadActivity(
     return;
   }
 
-  await createLeadForContact({ organizationId, contactId, at });
+  const creado = await createLeadForContact({ organizationId, contactId, at });
+  if (!creado) return;
+  // 071 — Lo que se sabe del lead al nacer. Nada de esto puede tumbar la
+  // ingesta del mensaje: si falla, el lead queda como antes.
+  try {
+    await completarLeadNuevo(organizationId, contactId, creado.id, contexto);
+  } catch (err) {
+    console.warn("[lead] no se completó el lead nuevo:", err instanceof Error ? err.message : err);
+  }
+}
+
+/** 071 — Pista de origen (si no hubo anuncio) y responsable por defecto. */
+async function completarLeadNuevo(
+  organizationId: string,
+  contactId: string,
+  leadId: string,
+  contexto: { texto?: string | null; conAnuncio?: boolean }
+): Promise<void> {
+  const db = getDb();
+  const pista = contexto.conAnuncio ? null : deducirOrigenPorSaludo(contexto.texto);
+  if (pista) {
+    await db
+      .update(schema.contact)
+      .set({ sourceHint: pista, updatedAt: new Date() })
+      .where(and(eq(schema.contact.organizationId, organizationId), eq(schema.contact.id, contactId)));
+  }
+
+  const { responsable } = await ajustesCrm(organizationId);
+  if (responsable.modo === "nadie") return;
+  const [miembros, ultimo] = await Promise.all([
+    db
+      .select({ userId: schema.member.userId })
+      .from(schema.member)
+      .where(eq(schema.member.organizationId, organizationId)),
+    db
+      .select({ userId: schema.lead.assignedUserId })
+      .from(schema.lead)
+      .where(
+        and(
+          eq(schema.lead.organizationId, organizationId),
+          isNotNull(schema.lead.assignedUserId),
+          ne(schema.lead.id, leadId)
+        )
+      )
+      .orderBy(desc(schema.lead.createdAt))
+      .limit(1),
+  ]);
+  const userId = elegirResponsable(
+    responsable,
+    new Set(miembros.map((m) => m.userId)),
+    ultimo[0]?.userId ?? null
+  );
+  if (!userId) return;
+  await db
+    .update(schema.lead)
+    .set({ assignedUserId: userId, updatedAt: new Date() })
+    .where(and(eq(schema.lead.id, leadId), isNull(schema.lead.assignedUserId)));
 }
 
 /**

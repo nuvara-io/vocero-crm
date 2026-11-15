@@ -17,13 +17,16 @@ export const SOURCE_VALUES: readonly SourceValue[] = [
   "otro",
 ];
 
-export const SOURCE_LABELS: Record<SourceValue | "desconocida", string> = {
+export const SOURCE_LABELS: Record<SourceValue | "desconocida" | "web" | "meta", string> = {
   anuncio: "Anuncio",
   organico: "Contenido orgánico",
   referido: "Referido",
   conocido: "Conocido",
   otro: "Otro",
   desconocida: "Sin identificar",
+  // 071 — Solo deducidas, nunca se capturan.
+  web: "Web o redes",
+  meta: "Meta, sin anuncio",
 };
 
 export function isSourceValue(v: unknown): v is SourceValue {
@@ -39,9 +42,12 @@ export function isSourceValue(v: unknown): v is SourceValue {
  */
 export function effectiveSource(
   stored: SourceValue | null,
-  llegoPorAnuncio = false
+  llegoPorAnuncio = false,
+  /** 071 — Lo que dijo el primer mensaje cuando no hubo anuncio. */
+  pista: "web" | "meta" | null = null
 ): SourceDto {
   if (stored) return { value: stored, source: "capturada" };
   if (llegoPorAnuncio) return { value: "anuncio", source: "deducida" };
+  if (pista) return { value: pista, source: "deducida" };
   return { value: "desconocida", source: "deducida" };
 }

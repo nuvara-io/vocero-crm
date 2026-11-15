@@ -122,6 +122,16 @@ export function TemplatesClient() {
    * agencia no es el de esta instancia — sin este pull la plantilla se queda
    * "Pendiente de Meta" para siempre aunque ya esté aprobada.
    */
+  // 071 — Ocultar del chat (solo en el CRM).
+  async function alternarOculta(t: TemplateDto) {
+    await fetch(`/api/templates/${t.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ hidden: !t.hidden }),
+    }).catch(() => null);
+    void refetch();
+  }
+
   const sync = useCallback(
     async ({ silent = false } = {}) => {
       if (!silent) {
@@ -228,10 +238,25 @@ export function TemplatesClient() {
                       {CATEGORY[t.category as Category]?.label ?? t.category}
                     </p>
                   </div>
-                  <Badge variant={STATUS_BADGE[t.status].variant}>
-                    {STATUS_BADGE[t.status].label}
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    {t.status === "approved" && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => void alternarOculta(t)}
+                        title="Solo en el CRM: en Meta sigue igual"
+                      >
+                        {t.hidden ? "Mostrar en el chat" : "Ocultar del chat"}
+                      </Button>
+                    )}
+                    <Badge variant={STATUS_BADGE[t.status].variant}>
+                      {STATUS_BADGE[t.status].label}
+                    </Badge>
+                  </div>
                 </div>
+                {t.hidden && (
+                  <p className="mt-1 text-xs text-text-3">Oculta: no aparece en el chat ni en los envíos en lote.</p>
+                )}
                 <p className="mt-3 whitespace-pre-wrap text-sm">{t.body}</p>
                 <p
                   className={cn(

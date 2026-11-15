@@ -12,6 +12,8 @@ type Params = { params: Promise<{ id: string }> };
 const patchSchema = z.object({
   name: z.string().trim().min(1).max(60).optional(),
   position: z.number().int().min(0).optional(),
+  /** 071 — El cerebro no mueve aquí a nadie sin una cita agendada. */
+  requiresBooking: z.boolean().optional(),
 });
 
 export const PATCH = withAuth(async (session, req: Request, ctx: Params) => {
@@ -26,6 +28,9 @@ export const PATCH = withAuth(async (session, req: Request, ctx: Params) => {
       ...(body.data.name !== undefined ? { name: body.data.name } : {}),
       ...(body.data.position !== undefined
         ? { position: body.data.position }
+        : {}),
+      ...(body.data.requiresBooking !== undefined
+        ? { requiresBooking: body.data.requiresBooking }
         : {}),
     })
     .where(
