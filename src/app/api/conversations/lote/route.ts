@@ -16,6 +16,8 @@ const LOSS = z.enum([
   "sin_presupuesto",
   "eligio_otro",
   "nunca_contesto",
+  "permiso_no",
+  "baja",
   "otro",
 ]);
 

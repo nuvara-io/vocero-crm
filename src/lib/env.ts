@@ -41,6 +41,8 @@ export const envSchema = z.object({
   // 068 (fork núvara): comisiones del equipo comercial. Apagada por defecto:
   // sin ella no se registran ventas ni aparece la pantalla. Ej.: COMISIONES=on
   COMISIONES: z.string().optional(),
+  // 072 (fork núvara): prospección por WhatsApp con permiso. Ej.: PROSPECCION=on
+  PROSPECCION: z.string().optional(),
   // 016: atribucion de anuncios y reporte a la Conversions API de Meta.
   // Apagada por defecto: sin ella no se captura de que anuncio vino una
   // conversacion, no se le reporta nada a Meta y la superficie da 404.

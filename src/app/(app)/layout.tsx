@@ -8,6 +8,7 @@ import { AppShell } from "@/components/app-shell";
 import { resolveCommit } from "@/lib/version";
 import { agendaEnabled } from "@/server/agenda/flag";
 import { comisionesEnabled } from "@/server/comisiones/flag";
+import { prospeccionEnabled } from "@/server/prospeccion-flag";
 import { enabledChannels } from "@/server/channels/enabled";
 import { navKicker } from "@/lib/channels";
 import { avisoIaDe } from "@/server/ai/aviso";
@@ -44,6 +45,7 @@ export default async function AppLayout({
       // cliente: no puede —ni debe— leer variables de entorno.
       agenda={agendaEnabled()}
       comisiones={comisionesEnabled()}
+      prospeccion={prospeccionEnabled()}
       kicker={navKicker([...enabledChannels()])}
       aviso={<AvisoIaBanner aviso={aviso} />}
     >

@@ -4,6 +4,7 @@ import { newId } from "@/lib/db/ids";
 import { scoped } from "@/lib/db/tenant";
 import { decidirSeguimiento } from "@/lib/crm-reglas";
 import { festivosDe } from "@/lib/festivos";
+import { horarioLey2300 } from "@/lib/prospeccion";
 import { primerNombre } from "@/lib/respuestas-rapidas";
 import { countVariables } from "@/lib/templates";
 import { businessTimezone } from "@/server/analytics/period";
@@ -83,8 +84,8 @@ export async function tandaSeguimiento(ahora = new Date()): Promise<ResumenTanda
 
 async function tandaDeOrganizacion(organizationId: string, ahora: Date): Promise<ResumenTanda> {
   const resumen: ResumenTanda = { revisadas: 0, enviadas: 0, archivadas: 0, errores: 0 };
-  const { seguimiento } = await ajustesCrm(organizationId);
-  if (!seguimiento.enabled) return resumen;
+  const { seguimiento, prospeccion } = await ajustesCrm(organizationId);
+  if (!seguimiento.enabled && !prospeccion.enabled) return resumen;
   const tz = await businessTimezone(organizationId);
   if (!horarioHabil(ahora, tz)) return resumen;
 
@@ -96,11 +97,13 @@ async function tandaDeOrganizacion(organizationId: string, ahora: Date): Promise
       conversationId: schema.conversation.id,
       contactId: schema.conversation.contactId,
       nombre: schema.contact.name,
+      // 072 — Los prospectos llevan su propio seguimiento (y horario de ley).
+      prospecto: schema.contact.prospectList,
       ancla: sql<Date>`(
         select min(m."created_at") from "message" m
         where m."conversation_id" = ${schema.conversation.id}
           and m."direction" = 'out'
-          and m."created_at" > ${schema.conversation.lastInboundAt}
+          and m."created_at" > coalesce(${schema.conversation.lastInboundAt}, '-infinity'::timestamp)
       )`,
     })
     .from(schema.conversation)
@@ -115,8 +118,10 @@ async function tandaDeOrganizacion(organizationId: string, ahora: Date): Promise
         isNull(schema.conversation.handoffAt),
         isNull(schema.contact.archivedAt),
         eq(schema.pipelineStage.kind, "open"),
-        sql`${schema.conversation.lastInboundAt} is not null`,
-        sql`${schema.conversation.lastMessageAt} > ${schema.conversation.lastInboundAt}`
+        // Un lead real escribió alguna vez; un prospecto con permiso puede no
+        // haber contestado todavía (072).
+        sql`(${schema.conversation.lastInboundAt} is not null or ${schema.contact.prospectList} is not null)`,
+        sql`${schema.conversation.lastMessageAt} > coalesce(${schema.conversation.lastInboundAt}, '-infinity'::timestamp)`
       )
     )
     .limit(500);
@@ -159,7 +164,9 @@ async function tandaDeOrganizacion(organizationId: string, ahora: Date): Promise
         .filter((h) => h.conversationId === c.conversationId && h.anchorAt.getTime() === ancla.getTime())
         .map((h) => h.step)
     );
-    const decision = decidirSeguimiento({ ajustes: seguimiento, dias, hechos: pasosHechos });
+    const ajustes = c.prospecto ? prospeccion : seguimiento;
+    if (c.prospecto && !horarioLey2300(ahora, tz)) continue;
+    const decision = decidirSeguimiento({ ajustes, dias, hechos: pasosHechos });
     if (!decision) continue;
     acciones++;
 

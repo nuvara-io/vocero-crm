@@ -187,6 +187,29 @@ export const contact = pgTable(
      */
     sourceHint: text("source_hint", { enum: ["web", "meta"] }),
     /**
+     * 072 — Prospección: la lista de donde salió (p. ej. «firmas-contables-
+     * 2026-11-15»). NULL = no es un prospecto importado.
+     */
+    prospectList: text("prospect_list"),
+    /** 072 — Cuándo se le pidió permiso para escribirle (llamada, formulario…). */
+    permissionRequestedAt: timestamp("permission_requested_at"),
+    /**
+     * 072 — El permiso para escribirle por WhatsApp: cuándo, por qué canal y
+     * el texto que aceptó. Sin esto, a un prospecto no se le escribe.
+     */
+    consentAt: timestamp("consent_at"),
+    consentChannel: text("consent_channel"),
+    consentText: text("consent_text"),
+    consentBy: text("consent_by").references(() => user.id, { onDelete: "set null" }),
+    /** 072 — El primer mensaje nuestro a un prospecto (cuenta para el tope diario). */
+    firstContactAt: timestamp("first_contact_at"),
+    /**
+     * 072 — Lista de supresión: pidió no ser contactado. El CRM no le manda
+     * plantillas nunca más; si él escribe, se le puede contestar.
+     */
+    doNotContactAt: timestamp("do_not_contact_at"),
+    doNotContactReason: text("do_not_contact_reason"),
+    /**
      * 027 — El agente no le responde a esta persona: clientes, miembros,
      * proveedores — gente a la que el dueño quiere atender él mismo.
      *
@@ -211,6 +234,7 @@ export const contact = pgTable(
     ),
     index("contact_org_wa_user_id_idx").on(t.organizationId, t.waUserId),
     index("contact_org_name_idx").on(t.organizationId, t.name),
+    index("contact_org_prospect_idx").on(t.organizationId, t.prospectList),
   ]
 );
 
@@ -347,6 +371,9 @@ export const leadStageEvent = pgTable(
         "sin_presupuesto",
         "eligio_otro",
         "nunca_contesto",
+        // 072 — prospección
+        "permiso_no",
+        "baja",
         "otro",
       ],
     }),

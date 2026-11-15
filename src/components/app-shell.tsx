@@ -32,6 +32,7 @@ export function AppShell({
   commit,
   agenda = false,
   comisiones = false,
+  prospeccion = false,
   kicker,
   aviso = null,
   children,
@@ -46,6 +47,8 @@ export function AppShell({
   agenda?: boolean;
   /** 068 — ¿esta instancia lleva comisiones? */
   comisiones?: boolean;
+  /** 072 — ¿esta instancia hace prospección? */
+  prospeccion?: boolean;
   /** 028 — La etiqueta bajo el logo (`navKicker`). */
   kicker?: string;
   /**
@@ -99,6 +102,7 @@ export function AppShell({
         apariencia={apariencia}
         agenda={agenda}
         comisiones={comisiones}
+        prospeccion={prospeccion}
         kicker={kicker}
         open={navOpen}
         onClose={() => setNavOpen(false)}

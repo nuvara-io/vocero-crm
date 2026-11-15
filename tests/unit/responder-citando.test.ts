@@ -56,6 +56,7 @@ vi.mock("@/server/inbox/identity", async (importOriginal) => {
   };
 });
 
+vi.mock("@/server/prospeccion", () => ({ alRecibirDeProspecto: vi.fn(async () => {}) }));
 vi.mock("@/server/inbox/lead-activity", () => ({
   onLeadActivity: vi.fn(async () => {}),
 }));

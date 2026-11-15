@@ -1,4 +1,6 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNotNull, sql } from "drizzle-orm";
+import { bloqueoDePlantilla, diaEn } from "@/lib/prospeccion";
+import { businessTimezone } from "@/server/analytics/period";
 import {
   countVariables,
   renderBody,
@@ -478,6 +480,17 @@ export async function sendTemplate(input: {
     );
   }
 
+  // 072 — Prospección: supresión, permiso, horario de la Ley 2300 y tope
+  // diario. Una plantilla es la única forma de escribirle primero a alguien,
+  // así que la regla vive aquí y vale para todos (chat, lote, seguimiento).
+  const tz = await businessTimezone(input.organizationId);
+  const ahora = new Date();
+  const primerosHoy = row.contact.prospectList && !row.contact.firstContactAt
+    ? await primerosContactosDelDia(input.organizationId, ahora, tz)
+    : 0;
+  const bloqueo = bloqueoDePlantilla({ contacto: row.contact, ahora, tz, primerosContactosHoy: primerosHoy });
+  if (bloqueo) throw new SendError(bloqueo.code, bloqueo.message);
+
   const creds = await getCredentialsByOrg(input.organizationId);
   if (!creds) throw new TemplateError("not_connected", "Sin número conectado");
   if (creds.status === "reconnect_required") {
@@ -539,6 +552,14 @@ export async function sendTemplate(input: {
     .set({ lastMessageAt: new Date(), updatedAt: new Date() })
     .where(eq(schema.conversation.id, input.conversationId));
 
+  // 072 — El primer mensaje a un prospecto cuenta para el tope diario.
+  if (row.contact.prospectList && !row.contact.firstContactAt) {
+    await db
+      .update(schema.contact)
+      .set({ firstContactAt: new Date(), updatedAt: new Date() })
+      .where(scoped(schema.contact.organizationId, input.organizationId, eq(schema.contact.id, row.contact.id)));
+  }
+
   publish(input.organizationId, {
     type: "message.new",
     data: {
@@ -548,4 +569,21 @@ export async function sendTemplate(input: {
   });
 
   return { messageId: message.id };
+}
+
+/** 072 — Prospectos que recibieron su primer mensaje hoy (zona del negocio). */
+async function primerosContactosDelDia(organizationId: string, ahora: Date, tz: string): Promise<number> {
+  const hoy = diaEn(ahora, tz);
+  const rows = await getDb()
+    .select({ n: sql<number>`count(*)::int` })
+    .from(schema.contact)
+    .where(
+      scoped(
+        schema.contact.organizationId,
+        organizationId,
+        isNotNull(schema.contact.prospectList),
+        sql`to_char(${schema.contact.firstContactAt} at time zone 'UTC' at time zone ${tz}, 'YYYY-MM-DD') = ${hoy}`
+      )
+    );
+  return rows[0]?.n ?? 0;
 }

@@ -18,6 +18,10 @@ const SEND_ERROR_STATUS: Record<SendError["code"], number> = {
   meta_unavailable: 503,
   upload_failed: 502,
   reply_unavailable: 422,
+  suprimido: 403,
+  sin_permiso: 403,
+  fuera_de_horario: 409,
+  tope_diario: 429,
 };
 
 /**

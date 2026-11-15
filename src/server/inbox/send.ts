@@ -70,7 +70,12 @@ export class SendError extends Error {
     | "meta_unavailable"
     | "upload_failed"
     /** 039: el mensaje a citar no es de aquí, no salió a la plataforma, o el canal no cita. */
-    | "reply_unavailable";
+    | "reply_unavailable"
+    /** 072: prospección — lista de supresión, sin permiso, fuera de horario, tope diario. */
+    | "suprimido"
+    | "sin_permiso"
+    | "fuera_de_horario"
+    | "tope_diario";
   /** 008: presente cuando el fallo ocurrió TRAS persistir el mensaje (failed). */
   messageId?: string;
 

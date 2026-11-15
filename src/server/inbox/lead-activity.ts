@@ -112,6 +112,8 @@ export async function createLeadForContact(input: {
   /** Quién dio de alta: el webhook es `sistema`, la captura manual `dueno`. */
   source?: StageChangeSource;
   actorUserId?: string | null;
+  /** 072 — Responsable desde el nacimiento (p. ej. importación de prospectos). */
+  assignedUserId?: string | null;
 }): Promise<{ id: string; stageId: string } | null> {
   const db = getDb();
 
@@ -151,6 +153,7 @@ export async function createLeadForContact(input: {
       stageId,
       position: (maxPos[0]?.max ?? -1) + 1,
       lastActivityAt: input.at ?? null,
+      assignedUserId: input.assignedUserId ?? null,
     })
     .onConflictDoNothing({ target: [schema.lead.contactId] })
     .returning({ id: schema.lead.id, stageId: schema.lead.stageId });

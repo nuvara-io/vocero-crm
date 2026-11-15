@@ -33,6 +33,8 @@ const patchSchema = z.object({
       "sin_presupuesto",
       "eligio_otro",
       "nunca_contesto",
+      "permiso_no",
+      "baja",
       "otro",
     ])
     .optional(),

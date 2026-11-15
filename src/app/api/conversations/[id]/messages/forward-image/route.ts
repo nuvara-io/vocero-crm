@@ -30,6 +30,10 @@ const SEND_ERROR_STATUS: Record<SendError["code"], number> = {
   upload_failed: 502,
   // 039: el reenvío nunca cita, pero el mapa cubre todo `SendError`.
   reply_unavailable: 422,
+  suprimido: 403,
+  sin_permiso: 403,
+  fuera_de_horario: 409,
+  tope_diario: 429,
 };
 
 /**

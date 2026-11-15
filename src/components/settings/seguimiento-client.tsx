@@ -11,7 +11,7 @@ import type { AjustesSeguimiento, PasoSeguimiento, ReglaResponsable } from "@/li
 import { cn } from "@/lib/utils";
 
 type Datos = {
-  ajustes: { responsable: ReglaResponsable; seguimiento: AjustesSeguimiento };
+  ajustes: { responsable: ReglaResponsable; seguimiento: AjustesSeguimiento; prospeccion?: AjustesSeguimiento };
   equipo: { userId: string; name: string }[];
   plantillas: { id: string; name: string; body: string }[];
   ultimos: { createdAt: string; step: number; ok: boolean; error: string | null; nombre: string }[];
@@ -61,6 +61,7 @@ export function SeguimientoClient() {
     <div className="max-w-2xl space-y-6">
       <Reparto datos={datos} onGuardado={cargar} />
       <Seguimiento datos={datos} onGuardado={cargar} />
+      <Seguimiento datos={datos} onGuardado={cargar} clave="prospeccion" />
     </div>
   );
 }
@@ -153,8 +154,22 @@ function Reparto({ datos, onGuardado }: { datos: Datos; onGuardado: () => Promis
   );
 }
 
-function Seguimiento({ datos, onGuardado }: { datos: Datos; onGuardado: () => Promise<void> }) {
-  const s = datos.ajustes.seguimiento;
+function Seguimiento({
+  datos,
+  onGuardado,
+  clave = "seguimiento",
+}: {
+  datos: Datos;
+  onGuardado: () => Promise<void>;
+  /** 072 — `prospeccion`: su propio seguimiento, sin archivar y en horario de ley. */
+  clave?: "seguimiento" | "prospeccion";
+}) {
+  const esProspeccion = clave === "prospeccion";
+  const s = (esProspeccion ? datos.ajustes.prospeccion : datos.ajustes.seguimiento) ?? {
+    enabled: false,
+    pasos: [],
+    archivarDias: 0,
+  };
   const primera = datos.plantillas[0]?.id ?? "";
   const [enabled, setEnabled] = useState(s.enabled);
   const [pasos, setPasos] = useState<PasoSeguimiento[]>(
@@ -162,7 +177,7 @@ function Seguimiento({ datos, onGuardado }: { datos: Datos; onGuardado: () => Pr
       ? s.pasos
       : [
           { dias: 2, templateId: primera },
-          { dias: 5, templateId: primera },
+          { dias: esProspeccion ? 6 : 5, templateId: primera },
         ]
   );
   const [archivar, setArchivar] = useState(String(s.archivarDias));
@@ -174,7 +189,11 @@ function Seguimiento({ datos, onGuardado }: { datos: Datos; onGuardado: () => Pr
   async function enviar() {
     const validos = pasos.filter((p) => p.templateId && p.dias >= 1);
     const e = await guardar({
-      seguimiento: { enabled, pasos: validos, archivarDias: Math.max(0, Number(archivar) || 0) },
+      [clave]: {
+        enabled,
+        pasos: validos,
+        archivarDias: esProspeccion ? 0 : Math.max(0, Number(archivar) || 0),
+      },
     });
     setEstado(e ?? "Guardado.");
     if (!e) await onGuardado();
@@ -183,12 +202,19 @@ function Seguimiento({ datos, onGuardado }: { datos: Datos; onGuardado: () => Pr
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Seguimiento automático</CardTitle>
+        <CardTitle>{esProspeccion ? "Seguimiento de prospectos" : "Seguimiento automático"}</CardTitle>
+        {esProspeccion ? (
+          <CardDescription>
+            Para prospectos con permiso que no han contestado: día 2 un dato útil, día 6 el último mensaje con una
+            salida clara. Después no se les escribe más. Solo en horario de la Ley 2300 y nunca a quien pidió la baja.
+          </CardDescription>
+        ) : (
         <CardDescription>
           Si un lead deja de contestar, le escribe solo con una plantilla aprobada y, al final, archiva el chat. Si
           contesta, el conteo vuelve a empezar. Solo en horario hábil (8:00 a 19:00, lunes a sábado, sin festivos) y
-          nunca en chats con una persona al frente, de prueba, ganados o perdidos.
+          nunca en chats con una persona al frente, de prueba, ganados o perdidos. Los prospectos llevan el suyo.
         </CardDescription>
+        )}
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex items-center justify-between rounded-lg border bg-subtle px-4 py-3">
@@ -196,7 +222,7 @@ function Seguimiento({ datos, onGuardado }: { datos: Datos; onGuardado: () => Pr
             <p className="text-sm font-semibold">{enabled ? "Encendido" : "Apagado"}</p>
             <p className="text-xs text-text-3">Cada plantilla enviada la cobra Meta como conversación nueva.</p>
           </div>
-          <Switch checked={enabled} onCheckedChange={setEnabled} label="Seguimiento automático" />
+          <Switch checked={enabled} onCheckedChange={setEnabled} label={esProspeccion ? "Seguimiento de prospectos" : "Seguimiento automático"} />
         </div>
 
         {datos.plantillas.length === 0 && (
@@ -208,10 +234,10 @@ function Seguimiento({ datos, onGuardado }: { datos: Datos; onGuardado: () => Pr
         {pasos.map((p, i) => (
           <div key={i} className="grid items-end gap-2 sm:grid-cols-[7rem_minmax(0,1fr)_auto]">
             <div className="space-y-1.5">
-              <Label htmlFor={`dias-${i}`}>Paso {i + 1}: a los</Label>
+              <Label htmlFor={`${clave}-dias-${i}`}>Paso {i + 1}: a los</Label>
               <div className="flex items-center gap-2">
                 <Input
-                  id={`dias-${i}`}
+                  id={`${clave}-dias-${i}`}
                   inputMode="numeric"
                   value={String(p.dias)}
                   onChange={(e) => cambiarPaso(i, { dias: Math.max(1, Number(e.target.value.replace(/\D/g, "")) || 1) })}
@@ -247,6 +273,7 @@ function Seguimiento({ datos, onGuardado }: { datos: Datos; onGuardado: () => Pr
           </Button>
         )}
 
+        {!esProspeccion && (
         <div className="flex items-center gap-2">
           <Label htmlFor="archivar">Archivar a los</Label>
           <Input
@@ -258,6 +285,7 @@ function Seguimiento({ datos, onGuardado }: { datos: Datos; onGuardado: () => Pr
           />
           <span className="text-xs text-text-3">días sin respuesta (0 = no archivar)</span>
         </div>
+        )}
 
         <div className="flex items-center gap-3">
           <Button size="sm" onClick={() => void enviar()}>
@@ -266,7 +294,7 @@ function Seguimiento({ datos, onGuardado }: { datos: Datos; onGuardado: () => Pr
           {estado && <span className="text-xs text-text-3">{estado}</span>}
         </div>
 
-        {datos.ultimos.length > 0 && (
+        {!esProspeccion && datos.ultimos.length > 0 && (
           <div className="space-y-1 border-t pt-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-text-3">Lo último que hizo</p>
             {datos.ultimos.map((u, i) => (

@@ -178,6 +178,9 @@ export type LossReason =
   | "sin_presupuesto"
   | "eligio_otro"
   | "nunca_contesto"
+  // 072 — prospección
+  | "permiso_no"
+  | "baja"
   | "otro";
 
 export const LOSS_REASON_LABEL: Record<LossReason, string> = {
@@ -186,6 +189,8 @@ export const LOSS_REASON_LABEL: Record<LossReason, string> = {
   sin_presupuesto: "Sin presupuesto ahora",
   eligio_otro: "Se fue con otro",
   nunca_contesto: "Nunca contestó",
+  permiso_no: "No dio permiso",
+  baja: "Pidió la baja",
   otro: "Otro",
 };
 

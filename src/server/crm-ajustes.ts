@@ -14,11 +14,14 @@ import {
 export type AjustesCrm = {
   responsable: ReglaResponsable;
   seguimiento: AjustesSeguimiento;
+  /** 072 — Seguimiento de prospectos (día 2 dato útil, día 6 salida): nunca archiva. */
+  prospeccion: AjustesSeguimiento;
 };
 
 export const AJUSTES_CRM_POR_DEFECTO: AjustesCrm = {
   responsable: { modo: "nadie" },
   seguimiento: SEGUIMIENTO_POR_DEFECTO,
+  prospeccion: { ...SEGUIMIENTO_POR_DEFECTO, archivarDias: 0 },
 };
 
 function parse(metadata: string | null): Record<string, unknown> {
@@ -40,7 +43,16 @@ function normalizar(raw: unknown): AjustesCrm {
   } else if (resp.modo === "rotacion" && Array.isArray(resp.userIds)) {
     responsable = { modo: "rotacion", userIds: resp.userIds.filter((x): x is string => typeof x === "string") };
   }
-  const seg = (r.seguimiento ?? {}) as Record<string, unknown>;
+  return {
+    responsable,
+    seguimiento: normalizarSeguimiento(r.seguimiento, SEGUIMIENTO_POR_DEFECTO.archivarDias),
+    // Los prospectos nunca se archivan solos: tras el último paso no se les escribe más.
+    prospeccion: { ...normalizarSeguimiento(r.prospeccion, 0), archivarDias: 0 },
+  };
+}
+
+function normalizarSeguimiento(raw: unknown, archivarPorDefecto: number): AjustesSeguimiento {
+  const seg = (typeof raw === "object" && raw !== null ? raw : {}) as Record<string, unknown>;
   const pasos = Array.isArray(seg.pasos)
     ? seg.pasos
         .map((p) => p as Record<string, unknown>)
@@ -50,11 +62,8 @@ function normalizar(raw: unknown): AjustesCrm {
     : [];
   const archivarDias = Number.isFinite(seg.archivarDias)
     ? Math.max(0, Math.floor(Number(seg.archivarDias)))
-    : SEGUIMIENTO_POR_DEFECTO.archivarDias;
-  return {
-    responsable,
-    seguimiento: { enabled: seg.enabled === true && (pasos.length > 0 || archivarDias > 0), pasos, archivarDias },
-  };
+    : archivarPorDefecto;
+  return { enabled: seg.enabled === true && (pasos.length > 0 || archivarDias > 0), pasos, archivarDias };
 }
 
 export async function ajustesCrm(organizationId: string): Promise<AjustesCrm> {

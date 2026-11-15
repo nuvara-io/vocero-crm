@@ -225,6 +225,13 @@
       "when": 1794760986739,
       "tag": "0031_invitation_created_at",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1794762138083,
+      "tag": "0032_prospeccion",
+      "breakpoints": true
     }
   ]
 }

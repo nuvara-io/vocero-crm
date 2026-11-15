@@ -52,6 +52,8 @@ const seguimientoSchema = z.object({
 const putSchema = z.object({
   responsable: responsableSchema.optional(),
   seguimiento: seguimientoSchema.optional(),
+  /** 072 */
+  prospeccion: seguimientoSchema.optional(),
 });
 
 export const PUT = withAuth(async (session, req: Request) => {

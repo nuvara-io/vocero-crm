@@ -24,6 +24,7 @@ import {
 } from "@/server/attribution/referral";
 import { registrarAnuncioDeOrigen } from "@/server/attribution/store";
 import { onLeadActivity } from "@/server/inbox/lead-activity";
+import { alRecibirDeProspecto } from "@/server/prospeccion";
 import { despachoActivo } from "@/server/brains/config";
 import { despacharAlCerebro } from "@/server/dispatch/encolar";
 import {
@@ -553,6 +554,8 @@ export async function ingestInboundMessage(input: {
     texto: input.text,
     conAnuncio: Boolean(input.anuncio),
   });
+  // 072 — Un prospecto que responde: baja si la pide, o pasa a conversación.
+  await alRecibirDeProspecto(organizationId, contact.id, input.text);
 
   publish(organizationId, {
     type: "message.new",
