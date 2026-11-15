@@ -1,4 +1,5 @@
 import {
+  bigint,
   boolean,
   check,
   index,
@@ -1419,4 +1420,144 @@ export const conversationNote = pgTable(
   (t) => [
     index("conversation_note_conv_idx").on(t.organizationId, t.conversationId, t.createdAt),
   ]
+);
+
+/* ============================================================
+ * 068 — Comisiones del equipo comercial (fork de núvara)
+ * ============================================================ */
+
+/**
+ * Las condiciones comerciales de una persona: si comisiona, el porcentaje, la
+ * base mensual y su código de referido. VERSIONADO: un cambio es una fila
+ * nueva con `valid_from`, nunca un UPDATE, para que subir el porcentaje en
+ * marzo no recalcule enero. Rige la fila más reciente con `valid_from` ≤ día.
+ */
+export const commissionProfile = pgTable(
+  "commission_profile",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    /** Los socios venden y cuentan en Resultados, pero no comisionan. */
+    comisiona: boolean("comisiona").notNull().default(false),
+    /** Puntos básicos: 500 = 5 %. */
+    rateBps: integer("rate_bps").notNull().default(0),
+    /** Base mensual en centavos: si el mes la alcanza, comisiona todo. */
+    monthlyBaseCents: bigint("monthly_base_cents", { mode: "number" }).notNull().default(0),
+    /** Código que el cliente escribe al activar en la plataforma (mayúsculas). */
+    referralCode: text("referral_code"),
+    /** Día (AAAA-MM-DD, zona del negocio) desde el que rige esta versión. */
+    validFrom: text("valid_from").notNull(),
+    createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("commission_profile_org_user_idx").on(t.organizationId, t.userId, t.validFrom)]
+);
+
+/**
+ * Una venta = el PRIMER pago confirmado de un cliente en la plataforma. Una
+ * fila por cliente (`platform_org_id` único): las recargas no comisionan. El
+ * monto lo pone la plataforma, nunca una persona.
+ */
+export const sale = pgTable(
+  "sale",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    platformOrgId: text("platform_org_id").notNull(),
+    /** Nombre del cliente en la plataforma, para leer la lista sin cruzar. */
+    customerName: text("customer_name"),
+    contactId: text("contact_id").references(() => contact.id, { onDelete: "set null" }),
+    leadId: text("lead_id").references(() => lead.id, { onDelete: "set null" }),
+    amountCents: bigint("amount_cents", { mode: "number" }).notNull(),
+    currency: text("currency").notNull().default("COP"),
+    paidAt: timestamp("paid_at").notNull(),
+    paymentRef: text("payment_ref").notNull(),
+    referralCode: text("referral_code"),
+    attributedUserId: text("attributed_user_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    /** codigo | responsable | manual · NULL = sin atribuir. */
+    attributionSource: text("attribution_source", {
+      enum: ["codigo", "responsable", "manual"],
+    }),
+    voidedAt: timestamp("voided_at"),
+    voidReason: text("void_reason"),
+    /**
+     * Si el pago se anuló cuando su mes YA estaba aprobado, la comisión que
+     * generó se descuenta en el primer mes aún abierto de esa persona: aquí
+     * queda cuál (AAAA-MM) y cuánto (≤ 0). NULL = no hay nada que descontar.
+     */
+    adjustmentPeriod: text("adjustment_period"),
+    adjustmentCents: bigint("adjustment_cents", { mode: "number" }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("sale_org_platform_uq").on(t.organizationId, t.platformOrgId),
+    uniqueIndex("sale_org_payment_uq").on(t.organizationId, t.paymentRef),
+    index("sale_org_paid_idx").on(t.organizationId, t.paidAt),
+    index("sale_org_user_idx").on(t.organizationId, t.attributedUserId),
+  ]
+);
+
+/** Bitácora append-only de cambios de atribución de una venta. */
+export const saleAttributionChange = pgTable(
+  "sale_attribution_change",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    saleId: text("sale_id")
+      .notNull()
+      .references(() => sale.id, { onDelete: "cascade" }),
+    fromUserId: text("from_user_id").references(() => user.id, { onDelete: "set null" }),
+    toUserId: text("to_user_id").references(() => user.id, { onDelete: "set null" }),
+    reason: text("reason").notNull(),
+    actorUserId: text("actor_user_id").references(() => user.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("sale_attr_change_sale_idx").on(t.organizationId, t.saleId, t.createdAt)]
+);
+
+/**
+ * La liquidación de un mes por persona. Mientras está `pendiente` se recalcula
+ * al consultarla; `aprobada` y `pagada` quedan congeladas con el %, la base y
+ * los totales copiados.
+ */
+export const commissionSettlement = pgTable(
+  "commission_settlement",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    /** AAAA-MM en la zona del negocio. */
+    period: text("period").notNull(),
+    salesCount: integer("sales_count").notNull(),
+    salesTotalCents: bigint("sales_total_cents", { mode: "number" }).notNull(),
+    baseCents: bigint("base_cents", { mode: "number" }).notNull(),
+    rateBps: integer("rate_bps").notNull(),
+    reached: boolean("reached").notNull(),
+    /** Descuentos por pagos anulados de meses ya aprobados (≤ 0). */
+    adjustmentCents: bigint("adjustment_cents", { mode: "number" }).notNull().default(0),
+    commissionCents: bigint("commission_cents", { mode: "number" }).notNull(),
+    status: text("status", { enum: ["aprobada", "pagada"] }).notNull(),
+    approvedBy: text("approved_by").references(() => user.id, { onDelete: "set null" }),
+    approvedAt: timestamp("approved_at").notNull(),
+    paidBy: text("paid_by").references(() => user.id, { onDelete: "set null" }),
+    paidAt: timestamp("paid_at"),
+    note: text("note"),
+  },
+  (t) => [uniqueIndex("commission_settlement_uq").on(t.organizationId, t.userId, t.period)]
 );

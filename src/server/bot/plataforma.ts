@@ -44,14 +44,27 @@ export function telefonoComoIdentidad(telefono: string): string | null {
   return digitos;
 }
 
-export async function aplicarAvisoPlataforma(
+export type ContactoPlataforma = {
+  contactId: string;
+  archivedAt: Date | null;
+  leadId: string | null;
+  stageId: string | null;
+  assignedUserId: string | null;
+};
+
+/**
+ * Los contactos que corresponden a un cliente de la plataforma, por teléfono
+ * (identidad de WhatsApp o el teléfono guardado) o por el correo de la ficha.
+ * 068 — También lo usa el registro de ventas para encontrar el responsable.
+ */
+export async function buscarContactosPlataforma(
   organizationId: string,
-  aviso: AvisoPlataforma
-): Promise<ResultadoAviso> {
+  datos: { telefono?: string | null; email?: string | null }
+): Promise<ContactoPlataforma[]> {
   const db = getDb();
-  const identidad = aviso.telefono ? telefonoComoIdentidad(aviso.telefono) : null;
-  const email = aviso.email?.trim().toLowerCase() || null;
-  if (!identidad && !email) return { encontrados: 0, movidos: 0, archivados: 0 };
+  const identidad = datos.telefono ? telefonoComoIdentidad(datos.telefono) : null;
+  const email = datos.email?.trim().toLowerCase() || null;
+  if (!identidad && !email) return [];
 
   const condiciones = [
     identidad ? eq(schema.contact.waIdentity, identidad) : undefined,
@@ -60,12 +73,13 @@ export async function aplicarAvisoPlataforma(
     email ? sql`lower(${schema.contact.ficha}->>'email') = ${email}` : undefined,
   ].filter((c): c is NonNullable<typeof c> => c !== undefined);
 
-  const contactos = await db
+  return db
     .select({
       contactId: schema.contact.id,
       archivedAt: schema.contact.archivedAt,
       leadId: schema.lead.id,
       stageId: schema.lead.stageId,
+      assignedUserId: schema.lead.assignedUserId,
     })
     .from(schema.contact)
     .leftJoin(
@@ -76,6 +90,14 @@ export async function aplicarAvisoPlataforma(
       )
     )
     .where(scoped(schema.contact.organizationId, organizationId, or(...condiciones)));
+}
+
+export async function aplicarAvisoPlataforma(
+  organizationId: string,
+  aviso: AvisoPlataforma
+): Promise<ResultadoAviso> {
+  const db = getDb();
+  const contactos = await buscarContactosPlataforma(organizationId, aviso);
 
   if (contactos.length === 0) return { encontrados: 0, movidos: 0, archivados: 0 };
 

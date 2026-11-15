@@ -197,6 +197,13 @@
       "when": 1794678550649,
       "tag": "0027_nuvara_asignado_festivos",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1794711934329,
+      "tag": "0028_comisiones",
+      "breakpoints": true
     }
   ]
 }

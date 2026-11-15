@@ -8,6 +8,7 @@ import {
   Settings,
   Sparkles,
   Users,
+  Wallet,
   type LucideIcon,
 } from "lucide-react";
 import { canConfigure } from "@/lib/auth/roles";
@@ -49,10 +50,13 @@ export const SETTINGS_ITEM: NavItem = {
  */
 export function appNavGroups({
   agenda = false,
+  comisiones = false,
   role,
 }: {
   /** 015 — "Citas" solo existe si esta instancia encendió la agenda. */
   agenda?: boolean;
+  /** 068 — "Comisiones" solo con la bandera COMISIONES. */
+  comisiones?: boolean;
   /** #86 — La guía de inicio solo para quien puede configurar. */
   role?: string | null;
 }): NavGroup[] {
@@ -79,7 +83,12 @@ export function appNavGroups({
     { title: "Trabajo", items: trabajo },
     { title: "Agente", items: agente },
     // 019 — Se mide al final: primero se atiende y se organiza.
-    { items: [{ href: "/results", label: "Resultados", icon: ChartColumn }] },
+    {
+      items: [
+        { href: "/results", label: "Resultados", icon: ChartColumn },
+        ...(comisiones ? [{ href: "/comisiones", label: "Comisiones", icon: Wallet }] : []),
+      ],
+    },
   ];
 }
 
