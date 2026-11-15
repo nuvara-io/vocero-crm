@@ -204,6 +204,13 @@
       "when": 1794711934329,
       "tag": "0028_comisiones",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1794714510715,
+      "tag": "0029_comisiones_neto_y_canales",
+      "breakpoints": true
     }
   ]
 }

@@ -154,3 +154,29 @@ compartida entre dos personas.
   atribuir.
 - En vivo contra `pnpm dev`: perfil, aviso de pago simulado, liquidación,
   aprobar, exportar.
+
+## 069 — Neto y ventas de otro canal (2026-11-14)
+
+Pedido: «eso es neto» y «deja que agreguen también si la venta entró por otro
+WhatsApp u otro canal».
+
+- **Neto:** la base y el porcentaje se calculan sobre el valor sin IVA.
+  `commission_settings.iva_bps` (19 % por defecto, editable en Ajustes →
+  Equipo; 0 si los pagos ya llegan netos). La liquidación aprobada congela
+  `iva_bps` y `sales_net_cents`. El IVA real de cada producto sigue por
+  confirmar con la contadora (cerebro, nodo `precios`).
+- **Venta de otro canal:** «Registrar venta» en /comisiones (cliente, correo,
+  canal, monto pagado con IVA, fecha, nota). La vendedora la registra a su
+  nombre y queda `por_confirmar`; un admin la confirma o la rechaza con
+  motivo, y la que registra un admin queda confirmada. Solo `confirmada` y sin
+  anular cuenta. No se puede registrar un correo que ya tiene pago real.
+- **Cuando llega el pago real** con el correo de una venta manual: la venta de
+  la plataforma se atribuye a quien la registró (después del código, antes
+  del responsable), conserva el canal y la manual queda `reemplazada`.
+- **Canal** en cada venta: código, WhatsApp del CRM, otro WhatsApp, Instagram,
+  Facebook, llamada, referido, presencial u otro.
+- Migración `0029_comisiones_neto_y_canales.sql`, aditiva y re-ejecutable.
+- Verificado: 1.495 pruebas, build, y en vivo con una vendedora de prueba
+  (registra a su nombre, no puede confirmar, solo ve lo suyo), confirmación
+  del admin, pago real que reemplaza la manual y bloqueo de un correo ya
+  pagado.

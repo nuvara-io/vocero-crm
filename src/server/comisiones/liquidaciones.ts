@@ -11,6 +11,7 @@ import {
 } from "@/lib/comisiones";
 import { zonedWallClockToUtc } from "@/lib/time/slots";
 import { businessTimezone } from "@/server/analytics/period";
+import { ivaBpsDe } from "@/server/comisiones/ajustes";
 import { agruparPorUsuario, versionesDePerfiles, vigentesEn } from "@/server/comisiones/perfiles";
 
 /**
@@ -36,6 +37,14 @@ export type VentaDto = {
   attributionSource: string | null;
   voidedAt: string | null;
   voidReason: string | null;
+  /** 069 */
+  origin: "plataforma" | "manual";
+  channel: string | null;
+  status: "por_confirmar" | "confirmada" | "rechazada" | "reemplazada";
+  customerEmail: string | null;
+  note: string | null;
+  reviewNote: string | null;
+  createdByName: string | null;
 };
 
 export type FilaLiquidacion = {
@@ -61,6 +70,10 @@ export type ResumenMes = {
   cerrado: boolean;
   filas: FilaLiquidacion[];
   sinAtribuir: VentaDto[];
+  /** 069 — Ventas registradas a mano que esperan la confirmación de un admin. */
+  porConfirmar: (VentaDto & { attributedUserId: string | null; attributedName: string | null })[];
+  /** 069 — IVA vigente para los meses sin aprobar. */
+  ivaBps: number;
 };
 
 export function rangoDelPeriodo(period: string, tz: string): { start: Date; end: Date } {
@@ -70,7 +83,12 @@ export function rangoDelPeriodo(period: string, tz: string): { start: Date; end:
   return { start, end };
 }
 
-function ventaDto(s: Sale): VentaDto {
+/** Solo una venta confirmada y sin anular cuenta para comisiones. */
+export function cuenta(s: Pick<Sale, "status" | "voidedAt">): boolean {
+  return s.status === "confirmada" && !s.voidedAt;
+}
+
+function ventaDto(s: Sale, nombres?: ReadonlyMap<string, { name: string }>): VentaDto {
   return {
     id: s.id,
     customerName: s.customerName,
@@ -82,6 +100,13 @@ function ventaDto(s: Sale): VentaDto {
     attributionSource: s.attributionSource,
     voidedAt: s.voidedAt?.toISOString() ?? null,
     voidReason: s.voidReason,
+    origin: s.origin,
+    channel: s.channel,
+    status: s.status,
+    customerEmail: s.customerEmail,
+    note: s.note,
+    reviewNote: s.reviewNote,
+    createdByName: s.createdBy ? (nombres?.get(s.createdBy)?.name ?? null) : null,
   };
 }
 
@@ -130,7 +155,7 @@ export async function resumenMes(
   const ahora = opciones.ahora ?? new Date();
   const { start, end } = rangoDelPeriodo(period, tz);
 
-  const [miembros, versiones, ventas, guardadas, descuentos] = await Promise.all([
+  const [miembros, versiones, ventas, guardadas, descuentos, ivaBps, pendientes] = await Promise.all([
     db
       .select({ userId: schema.member.userId, name: schema.user.name, email: schema.user.email })
       .from(schema.member)
@@ -165,6 +190,13 @@ export async function resumenMes(
           isNotNull(schema.sale.adjustmentCents)
         )
       ),
+    ivaBpsDe(organizationId),
+    // Las por confirmar se muestran sin importar el mes: esperan a alguien.
+    db
+      .select()
+      .from(schema.sale)
+      .where(scoped(schema.sale.organizationId, organizationId, eq(schema.sale.status, "por_confirmar")))
+      .orderBy(schema.sale.paidAt),
   ]);
 
   const nombres = new Map(miembros.map((m) => [m.userId, m]));
@@ -175,7 +207,7 @@ export async function resumenMes(
   // Quien comisiona aparece aunque no lleve ventas (para ver cuánto le falta);
   // un socio sin movimiento en el mes no ocupa espacio.
   for (const [userId, v] of vigentes) if (v.comisiona && nombres.has(userId)) userIds.add(userId);
-  for (const s of ventas) if (s.attributedUserId) userIds.add(s.attributedUserId);
+  for (const s of ventas) if (s.attributedUserId && s.status !== "reemplazada") userIds.add(s.attributedUserId);
   for (const g of guardadas) userIds.add(g.userId);
   for (const d of descuentos) if (d.attributedUserId) userIds.add(d.attributedUserId);
 
@@ -183,8 +215,8 @@ export async function resumenMes(
   for (const userId of userIds) {
     if (opciones.soloUserId && userId !== opciones.soloUserId) continue;
     const persona = nombres.get(userId);
-    const suyas = ventas.filter((s) => s.attributedUserId === userId);
-    const validas = suyas.filter((s) => !s.voidedAt);
+    const suyas = ventas.filter((s) => s.attributedUserId === userId && s.status !== "reemplazada");
+    const validas = suyas.filter(cuenta);
     const susDescuentos = descuentos.filter((d) => d.attributedUserId === userId);
     const guardada = guardadaDe.get(userId) ?? null;
 
@@ -193,11 +225,13 @@ export async function resumenMes(
       liquidacion = {
         salesCount: guardada.salesCount,
         salesTotalCents: guardada.salesTotalCents,
+        ivaBps: guardada.ivaBps,
+        salesNetCents: guardada.salesNetCents,
         baseCents: guardada.baseCents,
         rateBps: guardada.rateBps,
         comisiona: guardada.rateBps > 0,
         reached: guardada.reached,
-        faltaCents: guardada.reached ? 0 : Math.max(0, guardada.baseCents - guardada.salesTotalCents),
+        faltaCents: guardada.reached ? 0 : Math.max(0, guardada.baseCents - guardada.salesNetCents),
         brutaCents: guardada.commissionCents - guardada.adjustmentCents,
         adjustmentCents: guardada.adjustmentCents,
         commissionCents: guardada.commissionCents,
@@ -207,6 +241,7 @@ export async function resumenMes(
         ventasCents: validas.map((s) => s.amountCents),
         perfil: vigentes.get(userId) ?? null,
         ajustesCents: susDescuentos.map((d) => d.adjustmentCents ?? 0),
+        ivaBps,
       });
     }
 
@@ -221,8 +256,8 @@ export async function resumenMes(
       paidAt: guardada?.paidAt?.toISOString() ?? null,
       paidByName: guardada?.paidBy ? (nombres.get(guardada.paidBy)?.name ?? null) : null,
       note: guardada?.note ?? null,
-      ventas: suyas.map(ventaDto),
-      descuentos: susDescuentos.map((d) => ({ ...ventaDto(d), adjustmentCents: d.adjustmentCents ?? 0 })),
+      ventas: suyas.map((s) => ventaDto(s, nombres)),
+      descuentos: susDescuentos.map((d) => ({ ...ventaDto(d, nombres), adjustmentCents: d.adjustmentCents ?? 0 })),
     });
   }
 
@@ -236,7 +271,15 @@ export async function resumenMes(
     filas,
     sinAtribuir: opciones.soloUserId
       ? []
-      : ventas.filter((s) => !s.attributedUserId && !s.voidedAt).map(ventaDto),
+      : ventas.filter((s) => !s.attributedUserId && cuenta(s)).map((s) => ventaDto(s, nombres)),
+    porConfirmar: pendientes
+      .filter((s) => !opciones.soloUserId || s.attributedUserId === opciones.soloUserId)
+      .map((s) => ({
+        ...ventaDto(s, nombres),
+        attributedUserId: s.attributedUserId,
+        attributedName: s.attributedUserId ? (nombres.get(s.attributedUserId)?.name ?? null) : null,
+      })),
+    ivaBps,
   };
 }
 
@@ -270,6 +313,8 @@ export async function aprobarLiquidacion(
       period,
       salesCount: l.salesCount,
       salesTotalCents: l.salesTotalCents,
+      ivaBps: l.ivaBps,
+      salesNetCents: l.salesNetCents,
       baseCents: l.baseCents,
       rateBps: l.rateBps,
       reached: l.reached,
@@ -370,13 +415,15 @@ export function csvDelMes(resumen: ResumenMes): string {
   const pesos = (c: number) => (c / 100).toFixed(2);
   const celda = (v: string) => (/[",\n;]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
   const filas = [
-    ["Mes", "Persona", "Correo", "Ventas", "Total vendido", "Base", "Llegó a la base", "Porcentaje", "Descuentos", "Comisión", "Estado"],
+    ["Mes", "Persona", "Correo", "Ventas", "Total pagado", "IVA %", "Total neto", "Base", "Llegó a la base", "Porcentaje", "Descuentos", "Comisión", "Estado"],
     ...resumen.filas.map((f) => [
       resumen.period,
       f.name,
       f.email,
       String(f.liquidacion.salesCount),
       pesos(f.liquidacion.salesTotalCents),
+      (f.liquidacion.ivaBps / 100).toString(),
+      pesos(f.liquidacion.salesNetCents),
       pesos(f.liquidacion.baseCents),
       f.liquidacion.reached ? "Sí" : "No",
       (f.liquidacion.rateBps / 100).toString(),

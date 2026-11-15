@@ -1496,10 +1496,30 @@ export const sale = pgTable(
      */
     adjustmentPeriod: text("adjustment_period"),
     adjustmentCents: bigint("adjustment_cents", { mode: "number" }),
+    /**
+     * 069 — De dónde salió: `plataforma` (aviso de pago, monto real) o
+     * `manual` (alguien del equipo la registró porque entró por otro
+     * WhatsApp u otro canal; cuenta solo cuando un admin la confirma).
+     */
+    origin: text("origin", { enum: ["plataforma", "manual"] }).notNull().default("plataforma"),
+    /** Canal por el que llegó el cliente (ver `CANALES` en lib/comisiones). */
+    channel: text("channel"),
+    /** Solo `confirmada` cuenta para comisiones. */
+    status: text("status", { enum: ["por_confirmar", "confirmada", "rechazada", "reemplazada"] })
+      .notNull()
+      .default("confirmada"),
+    /** Correo del cliente: une una venta manual con su pago real cuando llega. */
+    customerEmail: text("customer_email"),
+    note: text("note"),
+    createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
+    reviewedBy: text("reviewed_by").references(() => user.id, { onDelete: "set null" }),
+    reviewedAt: timestamp("reviewed_at"),
+    reviewNote: text("review_note"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
   (t) => [
+    index("sale_org_status_idx").on(t.organizationId, t.status),
     uniqueIndex("sale_org_platform_uq").on(t.organizationId, t.platformOrgId),
     uniqueIndex("sale_org_payment_uq").on(t.organizationId, t.paymentRef),
     index("sale_org_paid_idx").on(t.organizationId, t.paidAt),
@@ -1548,6 +1568,10 @@ export const commissionSettlement = pgTable(
     salesTotalCents: bigint("sales_total_cents", { mode: "number" }).notNull(),
     baseCents: bigint("base_cents", { mode: "number" }).notNull(),
     rateBps: integer("rate_bps").notNull(),
+    /** 069 — IVA que se quitó a los pagos para llegar al neto (1900 = 19 %). */
+    ivaBps: integer("iva_bps").notNull().default(0),
+    /** 069 — Total neto (sin IVA): sobre esto se mide la base y se paga el %. */
+    salesNetCents: bigint("sales_net_cents", { mode: "number" }).notNull().default(0),
     reached: boolean("reached").notNull(),
     /** Descuentos por pagos anulados de meses ya aprobados (≤ 0). */
     adjustmentCents: bigint("adjustment_cents", { mode: "number" }).notNull().default(0),
@@ -1561,3 +1585,16 @@ export const commissionSettlement = pgTable(
   },
   (t) => [uniqueIndex("commission_settlement_uq").on(t.organizationId, t.userId, t.period)]
 );
+
+/**
+ * 069 — Ajustes de comisiones de la instancia. Por ahora, el IVA que traen
+ * incluido los pagos: la comisión y la base se calculan sobre el NETO.
+ */
+export const commissionSettings = pgTable("commission_settings", {
+  organizationId: text("organization_id")
+    .primaryKey()
+    .references(() => organization.id, { onDelete: "cascade" }),
+  ivaBps: integer("iva_bps").notNull().default(1900),
+  updatedBy: text("updated_by").references(() => user.id, { onDelete: "set null" }),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});

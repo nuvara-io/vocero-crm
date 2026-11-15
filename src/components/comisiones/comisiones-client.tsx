@@ -1,15 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ChevronDown, ChevronLeft, ChevronRight, Download, UserRoundSearch, Wallet } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, ClipboardCheck, Download, Plus, UserRoundSearch, Wallet } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { SelectNativo } from "@/components/ui/select-nativo";
-import { porcentajeLegible } from "@/lib/comisiones";
-import { mesLegible, pesos } from "@/lib/pesos";
+import { CANALES, CANALES_MANUALES, esCanal, porcentajeLegible } from "@/lib/comisiones";
+import { centavosDesdePesos, mesLegible, pesos } from "@/lib/pesos";
 import { cn } from "@/lib/utils";
 
 type Venta = {
@@ -22,11 +22,20 @@ type Venta = {
   attributionSource: "codigo" | "responsable" | "manual" | null;
   voidedAt: string | null;
   voidReason: string | null;
+  origin: "plataforma" | "manual";
+  channel: string | null;
+  status: "por_confirmar" | "confirmada" | "rechazada" | "reemplazada";
+  customerEmail: string | null;
+  note: string | null;
+  reviewNote: string | null;
+  createdByName: string | null;
 };
 
 type Liquidacion = {
   salesCount: number;
   salesTotalCents: number;
+  ivaBps: number;
+  salesNetCents: number;
   baseCents: number;
   rateBps: number;
   comisiona: boolean;
@@ -57,6 +66,8 @@ type Resumen = {
   cerrado: boolean;
   filas: Fila[];
   sinAtribuir: Venta[];
+  porConfirmar: (Venta & { attributedUserId: string | null; attributedName: string | null })[];
+  ivaBps: number;
   admin: boolean;
   equipo: { userId: string; name: string }[];
   yo: string;
@@ -116,6 +127,7 @@ export function ComisionesClient({ mesActual }: { mesActual: string }) {
   }, [cargar]);
 
   const admin = datos?.admin ?? false;
+  const [registrando, setRegistrando] = useState(false);
 
   return (
     <div className="flex h-full flex-col">
@@ -123,7 +135,7 @@ export function ComisionesClient({ mesActual }: { mesActual: string }) {
         <div className="min-w-0">
           <h2 className="text-[17px] font-bold tracking-tight">Comisiones</h2>
           <p className="text-xs text-text-3">
-            Primer pago de cada cliente, con el pago ya confirmado en la plataforma.
+            Primer pago de cada cliente, sobre el valor neto (sin IVA).
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -147,6 +159,12 @@ export function ComisionesClient({ mesActual }: { mesActual: string }) {
               <ChevronRight className="h-4 w-4" strokeWidth={1.8} />
             </button>
           </div>
+          {datos && (
+            <Button variant="outline" onClick={() => setRegistrando((v) => !v)} aria-expanded={registrando}>
+              <Plus className="h-4 w-4" strokeWidth={1.8} />
+              Registrar venta
+            </Button>
+          )}
           {admin && (
             <a
               href={`/api/comisiones/export?periodo=${periodo}`}
@@ -162,13 +180,45 @@ export function ComisionesClient({ mesActual }: { mesActual: string }) {
       <div className={cn("min-h-0 flex-1 space-y-4 overflow-y-auto p-3 sm:p-6", cargando && "opacity-60")}>
         {error && <p className="text-sm text-destructive">{error}</p>}
 
+        {registrando && datos && (
+          <RegistrarVenta
+            admin={admin}
+            equipo={datos.equipo}
+            yo={datos.yo}
+            onCerrar={() => setRegistrando(false)}
+            onGuardada={async () => {
+              setRegistrando(false);
+              await cargar();
+            }}
+          />
+        )}
+
+        {datos && datos.porConfirmar.length > 0 && (
+          <Card className="p-4 sm:p-5">
+            <div className="mb-3 flex items-center gap-2">
+              <ClipboardCheck className="h-4 w-4 text-warning-text" strokeWidth={1.8} />
+              <p className="text-sm font-semibold">Por confirmar · {datos.porConfirmar.length}</p>
+            </div>
+            <p className="mb-3 text-[13px] text-text-3">
+              {admin
+                ? "Ventas registradas a mano porque entraron por otro WhatsApp u otro canal. Solo cuentan cuando las confirmas."
+                : "Ventas que registraste a mano. Cuentan cuando las confirme quien administra."}
+            </p>
+            <div className="space-y-2">
+              {datos.porConfirmar.map((v) => (
+                <FilaPorConfirmar key={v.id} venta={v} admin={admin} onCambio={cargar} />
+              ))}
+            </div>
+          </Card>
+        )}
+
         {datos && admin && !datos.cerrado && datos.filas.length > 0 && (
           <p className="rounded-lg border bg-subtle px-4 py-2.5 text-[13px] text-text-2">
             El mes sigue en curso: los números se mueven con cada pago y se aprueban cuando termine.
           </p>
         )}
 
-        {datos && datos.filas.length === 0 && datos.sinAtribuir.length === 0 && (
+        {datos && datos.filas.length === 0 && datos.sinAtribuir.length === 0 && datos.porConfirmar.length === 0 && (
           <Card className="border-dashed">
             <EmptyState
               icon={Wallet}
@@ -176,7 +226,7 @@ export function ComisionesClient({ mesActual }: { mesActual: string }) {
               description={
                 admin
                   ? "Cuando la plataforma confirme el primer pago de un cliente, aparece aquí con la persona que lo trajo. Las condiciones de cada quien se ponen en Ajustes → Equipo."
-                  : "Cuando un cliente tuyo haga su primer pago, aparece aquí."
+                  : "Cuando un cliente tuyo haga su primer pago, aparece aquí. Si entró por otro WhatsApp u otro canal, regístralo con «Registrar venta»."
               }
             />
           </Card>
@@ -244,7 +294,7 @@ function TarjetaPersona({
   const [ocupado, setOcupado] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const l = fila.liquidacion;
-  const avance = l.baseCents > 0 ? Math.min(100, Math.round((l.salesTotalCents / l.baseCents) * 100)) : 100;
+  const avance = l.baseCents > 0 ? Math.min(100, Math.round((l.salesNetCents / l.baseCents) * 100)) : 100;
 
   async function accion(nombre: "aprobar" | "pagar" | "reabrir") {
     if (nombre === "reabrir" && !window.confirm("¿Reabrir este mes? Se vuelve a calcular con los datos de hoy.")) return;
@@ -264,7 +314,8 @@ function TarjetaPersona({
             <EstadoBadge estado={fila.estado} />
           </div>
           <p className="mt-0.5 text-[13px] text-text-3">
-            {l.salesCount === 1 ? "1 venta" : `${l.salesCount} ventas`} · {pesos(l.salesTotalCents)}
+            {l.salesCount === 1 ? "1 venta" : `${l.salesCount} ventas`} · {pesos(l.salesNetCents)} neto
+            {l.ivaBps > 0 && l.salesTotalCents > 0 ? ` (pagado ${pesos(l.salesTotalCents)})` : ""}
             {l.comisiona ? ` · ${porcentajeLegible(l.rateBps)} desde ${pesos(l.baseCents)}` : ""}
           </p>
         </div>
@@ -292,7 +343,7 @@ function TarjetaPersona({
           <p className="mt-1.5 text-[13px] text-text-2">
             {l.reached
               ? `Llegó a la base: comisiona sobre todo lo del mes.`
-              : `Le faltan ${pesos(l.faltaCents)} para la base de ${pesos(l.baseCents)}.`}
+              : `Le faltan ${pesos(l.faltaCents)} netos para la base de ${pesos(l.baseCents)}.`}
           </p>
         </div>
       )}
@@ -380,7 +431,7 @@ function FilaVenta({
   const [motivo, setMotivo] = useState("");
   const [ocupado, setOcupado] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const anulada = Boolean(venta.voidedAt);
+  const anulada = Boolean(venta.voidedAt) || venta.status === "rechazada";
 
   async function guardar() {
     setOcupado(true);
@@ -405,7 +456,13 @@ function FilaVenta({
           </p>
           <p className="text-xs text-text-3">
             {fecha(venta.paidAt)}
-            {venta.attributionSource ? ` · ${FUENTE[venta.attributionSource]}` : ""}
+            {venta.channel && esCanal(venta.channel)
+              ? ` · ${CANALES[venta.channel]}`
+              : venta.attributionSource
+                ? ` · ${FUENTE[venta.attributionSource]}`
+                : ""}
+            {venta.status === "por_confirmar" ? " · Por confirmar" : ""}
+            {venta.status === "rechazada" ? ` · Rechazada${venta.reviewNote ? `: ${venta.reviewNote}` : ""}` : ""}
             {venta.referralCode ? ` (${venta.referralCode})` : ""}
             {anulada ? ` · Anulada: ${venta.voidReason ?? ""}` : ""}
           </p>
@@ -446,6 +503,186 @@ function FilaVenta({
           {error && <p className="text-sm text-destructive sm:col-span-4">{error}</p>}
         </div>
       )}
+    </div>
+  );
+}
+
+const hoyISO = () => new Date().toLocaleDateString("en-CA");
+
+function RegistrarVenta({
+  admin,
+  equipo,
+  yo,
+  onCerrar,
+  onGuardada,
+}: {
+  admin: boolean;
+  equipo: Resumen["equipo"];
+  yo: string;
+  onCerrar: () => void;
+  onGuardada: () => Promise<void>;
+}) {
+  const [persona, setPersona] = useState(yo);
+  const [cliente, setCliente] = useState("");
+  const [email, setEmail] = useState("");
+  const [canal, setCanal] = useState<string>("whatsapp_otro");
+  const [monto, setMonto] = useState("");
+  const [fecha, setFecha] = useState(hoyISO());
+  const [nota, setNota] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [guardando, setGuardando] = useState(false);
+
+  async function guardar() {
+    const montoCents = centavosDesdePesos(monto);
+    if (!montoCents) return setError("Escribe lo que pagó el cliente, en pesos");
+    setGuardando(true);
+    const e = await enviar("/api/comisiones/ventas", {
+      userId: admin ? persona : undefined,
+      cliente,
+      email: email.trim() || null,
+      canal,
+      montoCents,
+      pagadoEn: fecha,
+      nota: nota.trim() || null,
+    });
+    setGuardando(false);
+    setError(e);
+    if (!e) await onGuardada();
+  }
+
+  return (
+    <Card className="space-y-3 p-4 sm:p-5">
+      <div>
+        <p className="text-sm font-semibold">Registrar una venta de otro canal</p>
+        <p className="text-[13px] text-text-3">
+          Para un cliente que entró por otro WhatsApp, Instagram, una llamada o un referido.
+          {admin ? " La que registras tú queda confirmada." : " Queda por confirmar hasta que la revise quien administra."}
+          {" "}Si después paga en la plataforma con ese correo, el pago real la reemplaza.
+        </p>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {admin && (
+          <label className="space-y-1.5 text-[13px] font-medium">
+            <span>Quién la hizo</span>
+            <SelectNativo value={persona} onChange={(e) => setPersona(e.target.value)}>
+              {equipo.map((p) => (
+                <option key={p.userId} value={p.userId}>
+                  {p.name}
+                </option>
+              ))}
+            </SelectNativo>
+          </label>
+        )}
+        <label className="space-y-1.5 text-[13px] font-medium">
+          <span>Canal</span>
+          <SelectNativo value={canal} onChange={(e) => setCanal(e.target.value)}>
+            {CANALES_MANUALES.map((c) => (
+              <option key={c} value={c}>
+                {CANALES[c]}
+              </option>
+            ))}
+          </SelectNativo>
+        </label>
+        <label className="space-y-1.5 text-[13px] font-medium">
+          <span>Cliente</span>
+          <Input value={cliente} onChange={(e) => setCliente(e.target.value)} placeholder="Nombre de la empresa" />
+        </label>
+        <label className="space-y-1.5 text-[13px] font-medium">
+          <span>Correo con el que se registró</span>
+          <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="opcional" />
+        </label>
+        <label className="space-y-1.5 text-[13px] font-medium">
+          <span>Lo que pagó (pesos, con IVA)</span>
+          <Input inputMode="numeric" value={monto} onChange={(e) => setMonto(e.target.value)} placeholder="80.000" />
+        </label>
+        <label className="space-y-1.5 text-[13px] font-medium">
+          <span>Fecha del pago</span>
+          <Input type="date" value={fecha} max={hoyISO()} onChange={(e) => setFecha(e.target.value)} />
+        </label>
+      </div>
+      <label className="block space-y-1.5 text-[13px] font-medium">
+        <span>Nota</span>
+        <Input value={nota} onChange={(e) => setNota(e.target.value)} placeholder="Ej. escribió al WhatsApp personal de Yuli" />
+      </label>
+      {error && <p className="text-sm text-destructive">{error}</p>}
+      <div className="flex gap-2">
+        <Button size="sm" disabled={guardando || cliente.trim().length < 2} onClick={() => void guardar()}>
+          {guardando ? "Guardando…" : "Registrar"}
+        </Button>
+        <Button variant="ghost" size="sm" onClick={onCerrar}>
+          Cancelar
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
+function FilaPorConfirmar({
+  venta,
+  admin,
+  onCambio,
+}: {
+  venta: Resumen["porConfirmar"][number];
+  admin: boolean;
+  onCambio: () => Promise<void>;
+}) {
+  const [rechazando, setRechazando] = useState(false);
+  const [motivo, setMotivo] = useState("");
+  const [ocupado, setOcupado] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function revisar(accion: "confirmar" | "rechazar") {
+    setOcupado(true);
+    const e = await enviar(`/api/comisiones/ventas/${venta.id}/revision`, { accion, nota: motivo.trim() || null });
+    setOcupado(false);
+    setError(e);
+    if (!e) await onCambio();
+  }
+
+  return (
+    <div className="rounded-lg border bg-card px-3 py-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0">
+          <p className="truncate text-[13px] font-semibold">{venta.customerName ?? "Cliente sin nombre"}</p>
+          <p className="text-xs text-text-3">
+            {fecha(venta.paidAt)}
+            {venta.channel && esCanal(venta.channel) ? ` · ${CANALES[venta.channel]}` : ""}
+            {admin && venta.attributedName ? ` · ${venta.attributedName}` : ""}
+            {venta.customerEmail ? ` · ${venta.customerEmail}` : ""}
+          </p>
+          {venta.note && <p className="mt-0.5 text-xs text-text-2">{venta.note}</p>}
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-[13px] font-semibold tabular-nums">{pesos(venta.amountCents)}</span>
+          {admin && !rechazando && (
+            <>
+              <Button size="sm" disabled={ocupado} onClick={() => void revisar("confirmar")}>
+                Confirmar
+              </Button>
+              <Button variant="outline" size="sm" disabled={ocupado} onClick={() => setRechazando(true)}>
+                Rechazar
+              </Button>
+            </>
+          )}
+        </div>
+      </div>
+      {rechazando && (
+        <div className="mt-2.5 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
+          <Input
+            className="h-8 text-xs"
+            placeholder="Por qué se rechaza (lo ve quien la registró)"
+            value={motivo}
+            onChange={(e) => setMotivo(e.target.value)}
+          />
+          <Button size="sm" variant="destructive" disabled={ocupado || motivo.trim().length < 3} onClick={() => void revisar("rechazar")}>
+            Rechazar
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setRechazando(false)}>
+            Cancelar
+          </Button>
+        </div>
+      )}
+      {error && <p className="mt-2 text-sm text-destructive">{error}</p>}
     </div>
   );
 }

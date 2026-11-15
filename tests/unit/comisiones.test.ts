@@ -168,3 +168,49 @@ describe("menú", () => {
     expect(hrefs(true)).toContain("/comisiones");
   });
 });
+
+import { netoDe } from "@/lib/comisiones";
+
+describe("069 — sobre el neto", () => {
+  it("quita el IVA incluido", () => {
+    expect(netoDe(11_900_000, 1900)).toBe(10_000_000);
+    expect(netoDe(8_000_000, 0)).toBe(8_000_000);
+  });
+
+  it("la base se mide con el neto: $119.000 pagados no llegan a una base de $110.000", () => {
+    const l = liquidar({
+      ventasCents: [11_900_000],
+      perfil: { comisiona: true, rateBps: 500, monthlyBaseCents: 11_000_000 },
+      ivaBps: 1900,
+    });
+    expect(l.salesNetCents).toBe(10_000_000);
+    expect(l.reached).toBe(false);
+    expect(l.faltaCents).toBe(1_000_000);
+  });
+
+  it("el 5 % va sobre el neto de todo el mes", () => {
+    const l = liquidar({
+      ventasCents: [11_900_000, 11_900_000],
+      perfil: { comisiona: true, rateBps: 500, monthlyBaseCents: 10_000_000 },
+      ivaBps: 1900,
+    });
+    expect(l.salesNetCents).toBe(20_000_000);
+    expect(l.commissionCents).toBe(1_000_000);
+  });
+});
+
+describe("069 — ventas por otro canal", () => {
+  const duenos = new Map([["YULI", "u_yuli"]]);
+
+  it("quien la registró a mano gana sobre el responsable del lead", () => {
+    expect(
+      atribuir({ codigo: null, duenosDeCodigo: duenos, registradaPor: "u_ana", responsableUserId: "u_rob" })
+    ).toEqual({ userId: "u_ana", fuente: "manual" });
+  });
+
+  it("el código del cliente gana sobre el registro a mano", () => {
+    expect(
+      atribuir({ codigo: "YULI", duenosDeCodigo: duenos, registradaPor: "u_ana", responsableUserId: null })
+    ).toEqual({ userId: "u_yuli", fuente: "codigo" });
+  });
+});

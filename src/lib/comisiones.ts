@@ -3,8 +3,8 @@
  * una prueba unitaria las afirme todas. Las acordadas el 2026-11-14:
  *
  * - Venta = el PRIMER pago confirmado de un cliente en la plataforma.
- * - Base mensual: si las ventas del mes suman la base o más, se cobra el %
- *   sobre TODO lo del mes; si no llega, $0.
+ * - Base mensual: si las ventas NETAS del mes (sin IVA, 069) suman la base o
+ *   más, se cobra el % sobre TODO el neto del mes; si no llega, $0.
  * - Quien no comisiona (socios) suma en ventas, pero su comisión es $0.
  * - El % y la base son los del perfil vigente el último día del mes.
  *
@@ -106,9 +106,53 @@ export function comisionDe(montoCents: number, rateBps: number): number {
   return Math.round((montoCents * rateBps) / 10_000);
 }
 
+/**
+ * 069 — Neto (sin IVA) de un monto que trae el IVA incluido. Con IVA 0 el
+ * neto es el mismo monto.
+ */
+export function netoDe(montoCents: number, ivaBps: number): number {
+  if (ivaBps <= 0) return montoCents;
+  return Math.round((montoCents * 10_000) / (10_000 + ivaBps));
+}
+
+/** 069 — Canales por los que puede entrar una venta. */
+export const CANALES = {
+  codigo: "Código de la vendedora",
+  whatsapp_crm: "WhatsApp del CRM",
+  whatsapp_otro: "Otro WhatsApp",
+  instagram: "Instagram",
+  facebook: "Facebook",
+  llamada: "Llamada",
+  referido: "Referido",
+  presencial: "Presencial",
+  otro: "Otro",
+} as const;
+
+export type Canal = keyof typeof CANALES;
+
+/** Los que se pueden elegir al registrar una venta a mano. */
+export const CANALES_MANUALES: Canal[] = [
+  "whatsapp_otro",
+  "instagram",
+  "facebook",
+  "llamada",
+  "referido",
+  "presencial",
+  "otro",
+];
+
+export function esCanal(valor: string | null | undefined): valor is Canal {
+  return !!valor && Object.prototype.hasOwnProperty.call(CANALES, valor);
+}
+
 export type Liquidacion = {
   salesCount: number;
+  /** Lo que pagaron los clientes (con IVA). */
   salesTotalCents: number;
+  /** 069 — IVA descontado (1900 = 19 %). */
+  ivaBps: number;
+  /** 069 — Total sin IVA: con esto se mide la base y se calcula el %. */
+  salesNetCents: number;
   baseCents: number;
   rateBps: number;
   comisiona: boolean;
@@ -128,25 +172,32 @@ export type Liquidacion = {
  * comisión es $0 pero las ventas se cuentan igual.
  */
 export function liquidar(input: {
+  /** Lo que pagó cada cliente, con IVA incluido. */
   ventasCents: readonly number[];
   perfil: Pick<PerfilComision, "comisiona" | "rateBps" | "monthlyBaseCents"> | null;
   ajustesCents?: readonly number[];
+  /** 069 — IVA incluido en los pagos; la base y el % van sobre el neto. */
+  ivaBps?: number;
 }): Liquidacion {
+  const ivaBps = Math.max(0, input.ivaBps ?? 0);
   const salesTotalCents = input.ventasCents.reduce((a, v) => a + v, 0);
+  const salesNetCents = netoDe(salesTotalCents, ivaBps);
   const comisiona = input.perfil?.comisiona === true;
   const rateBps = comisiona ? input.perfil!.rateBps : 0;
   const baseCents = comisiona ? input.perfil!.monthlyBaseCents : 0;
-  const reached = comisiona && input.ventasCents.length > 0 && salesTotalCents >= baseCents;
-  const brutaCents = reached ? comisionDe(salesTotalCents, rateBps) : 0;
+  const reached = comisiona && input.ventasCents.length > 0 && salesNetCents >= baseCents;
+  const brutaCents = reached ? comisionDe(salesNetCents, rateBps) : 0;
   const adjustmentCents = (input.ajustesCents ?? []).reduce((a, v) => a + v, 0);
   return {
     salesCount: input.ventasCents.length,
     salesTotalCents,
+    ivaBps,
+    salesNetCents,
     baseCents,
     rateBps,
     comisiona,
     reached,
-    faltaCents: comisiona ? Math.max(0, baseCents - salesTotalCents) : 0,
+    faltaCents: comisiona ? Math.max(0, baseCents - salesNetCents) : 0,
     brutaCents,
     adjustmentCents,
     commissionCents: brutaCents + adjustmentCents,
@@ -155,18 +206,22 @@ export function liquidar(input: {
 
 /**
  * A quién se le atribuye una venta nueva. En orden: el dueño del código que
- * el cliente escribió al activar; si no, el responsable del lead; si no, nadie
- * (queda en «Sin atribuir» para que un admin la asigne a mano).
+ * el cliente escribió al activar; si no, quien la registró a mano por otro
+ * canal (069); si no, el responsable del lead; si no, nadie (queda en «Sin
+ * atribuir» para que un admin la asigne a mano).
  */
 export function atribuir(input: {
   codigo: string | null | undefined;
   /** Código normalizado → userId, con los perfiles vigentes hoy. */
   duenosDeCodigo: ReadonlyMap<string, string>;
+  /** 069 — Quien registró a mano esta venta (otro WhatsApp u otro canal). */
+  registradaPor?: string | null;
   responsableUserId: string | null | undefined;
 }): { userId: string | null; fuente: FuenteAtribucion | null } {
   const codigo = normalizarCodigo(input.codigo);
   const porCodigo = codigo ? input.duenosDeCodigo.get(codigo) : undefined;
   if (porCodigo) return { userId: porCodigo, fuente: "codigo" };
+  if (input.registradaPor) return { userId: input.registradaPor, fuente: "manual" };
   if (input.responsableUserId) return { userId: input.responsableUserId, fuente: "responsable" };
   return { userId: null, fuente: null };
 }

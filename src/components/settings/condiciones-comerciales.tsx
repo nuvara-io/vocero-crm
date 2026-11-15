@@ -62,11 +62,13 @@ export function CondicionesComerciales() {
       <CardHeader>
         <CardTitle>Condiciones comerciales</CardTitle>
         <CardDescription>
-          Quién comisiona, con qué porcentaje y desde qué base del mes. Si en el mes llega a la base, comisiona
-          sobre todo lo vendido. El código es el que el cliente escribe al activar en la plataforma.
+          Quién comisiona, con qué porcentaje y desde qué base del mes. Todo va sobre el valor neto (sin IVA): si
+          en el mes llega a la base, comisiona sobre todo lo vendido. El código es el que el cliente escribe al
+          activar en la plataforma.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-2">
+        <IvaIncluido />
         {personas.map((p) =>
           editando === p.userId ? (
             <Editor
@@ -249,6 +251,68 @@ function Editor({
           Cancelar
         </Button>
       </div>
+    </div>
+  );
+}
+
+/** 069 — El IVA que traen los pagos: se quita antes de medir la base y el %. */
+function IvaIncluido() {
+  const [valor, setValor] = useState<string | null>(null);
+  const [guardado, setGuardado] = useState<string | null>(null);
+  const [estado, setEstado] = useState<"" | "guardando" | "ok" | "error">("");
+
+  useEffect(() => {
+    void (async () => {
+      const res = await fetch("/api/comisiones/ajustes").catch(() => null);
+      if (!res?.ok) return;
+      const data = (await res.json()) as { ivaBps: number };
+      const texto = String(data.ivaBps / 100).replace(".", ",");
+      setValor(texto);
+      setGuardado(texto);
+    })();
+  }, []);
+
+  if (valor === null) return null;
+
+  async function guardar() {
+    const ivaBps = bpsDesdeTexto(valor ?? "");
+    if (ivaBps === null || ivaBps > 5_000) return setEstado("error");
+    setEstado("guardando");
+    const res = await fetch("/api/comisiones/ajustes", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ivaBps }),
+    }).catch(() => null);
+    setEstado(res?.ok ? "ok" : "error");
+    if (res?.ok) setGuardado(valor);
+  }
+
+  return (
+    <div className="flex flex-wrap items-end justify-between gap-3 rounded-lg border bg-subtle px-4 py-3">
+      <div className="min-w-0 flex-1">
+        <Label htmlFor="iva-incluido">IVA incluido en los pagos (%)</Label>
+        <p className="mt-0.5 text-xs text-text-3">
+          Se descuenta de lo que paga el cliente para llegar al neto. 0 si los pagos ya llegan sin IVA. Rige para los
+          meses que no estén aprobados.
+        </p>
+      </div>
+      <div className="flex items-center gap-2">
+        <Input
+          id="iva-incluido"
+          className="w-20"
+          inputMode="decimal"
+          value={valor}
+          onChange={(e) => {
+            setValor(e.target.value);
+            setEstado("");
+          }}
+        />
+        <Button size="sm" disabled={estado === "guardando" || valor === guardado} onClick={() => void guardar()}>
+          Guardar
+        </Button>
+      </div>
+      {estado === "ok" && <p className="w-full text-xs text-success-text">Guardado.</p>}
+      {estado === "error" && <p className="w-full text-xs text-destructive">Escribe un porcentaje entre 0 y 50.</p>}
     </div>
   );
 }
