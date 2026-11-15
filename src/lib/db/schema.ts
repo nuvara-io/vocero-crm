@@ -106,6 +106,8 @@ export const invitation = pgTable("invitation", {
   role: text("role"),
   status: text("status").notNull().default("pending"),
   expiresAt: timestamp("expires_at").notNull(),
+  /** 071 — Better Auth 1.7 la exige en el plugin de organización. */
+  createdAt: timestamp("created_at").notNull().defaultNow(),
   inviterId: text("inviter_id")
     .notNull()
     .references(() => user.id, { onDelete: "cascade" }),
