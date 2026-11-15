@@ -14,7 +14,8 @@ import { cn } from "@/lib/utils";
  * Lo que la marca necesita para dibujarse: el nombre, el acento y si hay
  * logo subido (el acento entra en la URL versionada del icono generado).
  */
-export type BrandingMark = Pick<Branding, "name" | "accent" | "favicon">;
+export type BrandingMark = Pick<Branding, "name" | "accent" | "favicon"> &
+  Partial<Pick<Branding, "logoBackground">>;
 
 /**
  * El trazo de la marca: la "v" caligráfica con remate cian de vocerocrm.com.
@@ -61,12 +62,20 @@ export function BrandTile({
   branding: BrandingMark;
   className?: string;
 }) {
+  // 070 — El fondo lo elige el negocio: el degradado del acento, un fondo
+  // claro (para un logo con colores propios, que sobre el acento se ensucia)
+  // o ninguno. Sin logo, la inicial va del color del acento en los dos últimos.
+  const fondo = branding.logoBackground ?? "acento";
   return (
     <span
       className={cn(
-        "brand-tile flex shrink-0 items-center justify-center overflow-hidden text-brand-fg",
+        "flex shrink-0 items-center justify-center overflow-hidden",
+        fondo === "acento" && "brand-tile text-brand-fg",
+        fondo === "claro" && "border border-black/10 bg-white text-[#0f172a]",
+        fondo === "transparente" && "bg-transparent text-brand-ink",
         className
       )}
+      data-fondo={fondo}
       aria-hidden
     >
       {branding.favicon ? (

@@ -220,3 +220,52 @@ describe("white-label: normalización", () => {
     expect(normalizeBranding({ accent: "#3F6B66" }).accent).toBe("#3f6b66");
   });
 });
+
+import { ajusteDeContraste, buttonCssVariables, esNeutro } from "@/lib/branding";
+
+describe("070 — fondo del logo y botones", () => {
+  it("una marca vieja sin los campos nuevos queda como antes", () => {
+    const b = normalizeBranding({ name: "Nuvara", accent: "#0d5bff" });
+    expect(b.logoBackground).toBe("acento");
+    expect(b.buttonColor).toBeNull();
+    expect(b.buttonShape).toBe("pildora");
+  });
+
+  it("descarta valores inválidos y normaliza el color de botón", () => {
+    const b = normalizeBranding({
+      logoBackground: "arcoiris" as never,
+      buttonColor: "#ABCDEF",
+      buttonShape: "triangulo" as never,
+    });
+    expect(b.logoBackground).toBe("acento");
+    expect(b.buttonColor).toBe("#abcdef");
+    expect(b.buttonShape).toBe("pildora");
+    expect(normalizeBranding({ buttonColor: "rojo" }).buttonColor).toBeNull();
+  });
+
+  it("sin color propio solo emite la forma: los botones caen al acento", () => {
+    const css = buttonCssVariables({ buttonShape: "recto" });
+    expect(css).toContain("--btn-radius:4px");
+    expect(css).not.toContain("--btn:");
+  });
+
+  it("con color propio emite el color para los dos temas, con su tinta legible", () => {
+    const css = buttonCssVariables({ buttonColor: "#3f6b66", buttonShape: "redondeado" });
+    expect(css).toContain("--btn-radius:10px");
+    expect(css).toMatch(/:root:root\{--btn:#3f6b66;--btn-hover:#[0-9a-f]{6};--btn-fg:#ffffff;\}/);
+    expect(css).toContain(':root:root[data-theme="dark"]{--btn:');
+  });
+
+  it("el acento blanco se avisa: termina en gris", () => {
+    const a = ajusteDeContraste("#ffffff");
+    expect(a.ajustado).toBe(true);
+    expect(esNeutro(a.resultado)).toBe(true);
+    expect(ajusteDeContraste("#0d5bff").ajustado).toBe(false);
+  });
+
+  it("neutro: blanco, gris y negro sí; un azul no", () => {
+    expect(esNeutro("#ffffff")).toBe(true);
+    expect(esNeutro("#878787")).toBe(true);
+    expect(esNeutro("#0d5bff")).toBe(false);
+  });
+});

@@ -35,6 +35,24 @@ export type BrandingFavicon = {
   version: number;
 };
 
+/**
+ * 070 — Detrás del logo: el degradado del acento (lo de siempre), un fondo
+ * claro (para un logo con colores propios) o nada.
+ */
+export const LOGO_FONDOS = ["acento", "claro", "transparente"] as const;
+export type LogoFondo = (typeof LOGO_FONDOS)[number];
+
+/** 070 — Forma de los botones. */
+export const FORMAS_BOTON = ["pildora", "redondeado", "recto"] as const;
+export type FormaBoton = (typeof FORMAS_BOTON)[number];
+
+/** Radio CSS de cada forma. */
+export const RADIO_BOTON: Record<FormaBoton, string> = {
+  pildora: "9999px",
+  redondeado: "10px",
+  recto: "4px",
+};
+
 export type Branding = {
   name: string;
   accent: string; // hex del acento base elegido
@@ -42,6 +60,12 @@ export type Branding = {
   currency: Currency;
   /** `null` = se dibuja con la inicial sobre el acento (ver `lib/favicon`). */
   favicon: BrandingFavicon | null;
+  /** 070 — Fondo del mosaico del logo. */
+  logoBackground: LogoFondo;
+  /** 070 — Color de los botones principales; `null` = el acento. */
+  buttonColor: string | null;
+  /** 070 — Forma de los botones. */
+  buttonShape: FormaBoton;
 };
 
 export const DEFAULT_BRANDING: Branding = {
@@ -51,6 +75,9 @@ export const DEFAULT_BRANDING: Branding = {
   accent: "#0d5bff",
   currency: DEFAULT_CURRENCY,
   favicon: null,
+  logoBackground: "acento",
+  buttonColor: null,
+  buttonShape: "pildora",
 };
 
 /**
@@ -263,15 +290,63 @@ function accentBlock(selector: string, s: AccentSet): string {
  * `:root`), gana para ese elemento y sus hijos sin competir en especificidad
  * con los otros dos bloques, que solo tocan `<html>`.
  */
-export function accentCssVariables(accentHex: string): string {
+export function accentCssVariables(
+  accentHex: string,
+  botones: { buttonColor?: string | null; buttonShape?: FormaBoton } = {}
+): string {
   return (
     accentBlock(":root:root", resolveAccentSet(accentHex, "light")) +
     accentBlock(
       ':root:root[data-theme="dark"]',
       resolveAccentSet(accentHex, "dark")
     ) +
-    accentBlock(".nav-dark", resolveNavAccentSet(accentHex))
+    accentBlock(".nav-dark", resolveNavAccentSet(accentHex)) +
+    buttonCssVariables(botones)
   );
+}
+
+/**
+ * 070 — Botones con color y forma propios. Sin color propio no emite colores:
+ * `--btn*` cae a los del acento (globals.css), que ya cambian con el tema.
+ */
+export function buttonCssVariables(botones: {
+  buttonColor?: string | null;
+  buttonShape?: FormaBoton;
+}): string {
+  const radio = RADIO_BOTON[botones.buttonShape ?? "pildora"];
+  let css = `:root:root{--btn-radius:${radio};}`;
+  const color = botones.buttonColor;
+  if (color && isValidHex(color)) {
+    const claro = resolveAccentSet(color, "light");
+    const oscuro = resolveAccentSet(color, "dark");
+    css +=
+      `:root:root{--btn:${claro.accent};--btn-hover:${claro.hover};--btn-fg:${claro.fg};}` +
+      `:root:root[data-theme="dark"]{--btn:${oscuro.accent};--btn-hover:${oscuro.hover};--btn-fg:${oscuro.fg};}`;
+  }
+  return css;
+}
+
+/**
+ * 070 — ¿El color elegido se puede usar tal cual en botones y texto sobre
+ * fondo claro? Si no, devuelve el tono al que se ajusta (un blanco termina en
+ * gris) para avisarlo ANTES de guardar.
+ */
+export function ajusteDeContraste(hex: string): { ajustado: boolean; resultado: string } {
+  if (!isValidHex(hex)) return { ajustado: false, resultado: hex };
+  const resultado = resolveAccentSet(hex, "light").accent.toLowerCase();
+  const original = hex.toLowerCase();
+  if (resultado === original) return { ajustado: false, resultado };
+  const a = hexToRgb(original);
+  const b = hexToRgb(resultado);
+  const distancia = Math.abs(a.r - b.r) + Math.abs(a.g - b.g) + Math.abs(a.b - b.b);
+  return { ajustado: distancia > 24, resultado };
+}
+
+/** 070 — Un color casi sin saturación (blanco, gris, negro). */
+export function esNeutro(hex: string): boolean {
+  if (!isValidHex(hex)) return false;
+  const { r, g, b } = hexToRgb(hex.toLowerCase());
+  return Math.max(r, g, b) - Math.min(r, g, b) < 18;
 }
 
 export function normalizeBranding(input: Partial<Branding> | null): Branding {
@@ -290,5 +365,13 @@ export function normalizeBranding(input: Partial<Branding> | null): Branding {
     f && typeof f.mime === "string" && Number.isFinite(f.version)
       ? { mime: f.mime, version: Math.max(1, Math.floor(f.version)) }
       : null;
-  return { name, accent, currency, favicon };
+  const logoBackground = (LOGO_FONDOS as readonly string[]).includes(input?.logoBackground ?? "")
+    ? (input!.logoBackground as LogoFondo)
+    : DEFAULT_BRANDING.logoBackground;
+  const buttonColor =
+    input?.buttonColor && isValidHex(input.buttonColor) ? input.buttonColor.toLowerCase() : null;
+  const buttonShape = (FORMAS_BOTON as readonly string[]).includes(input?.buttonShape ?? "")
+    ? (input!.buttonShape as FormaBoton)
+    : DEFAULT_BRANDING.buttonShape;
+  return { name, accent, currency, favicon, logoBackground, buttonColor, buttonShape };
 }

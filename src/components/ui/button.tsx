@@ -2,7 +2,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 /**
- * Botones en píldora, como los `.btn` de vocerocrm.com: semibold, apretados y
+ * Botones en píldora (o con la forma de Ajustes → Marca, 070), como los `.btn` de vocerocrm.com: semibold, apretados y
  * con un leve levantamiento al pasar el cursor. El principal lleva el acento
  * white-label; el `outline` es el fantasma de la landing (borde fino que se
  * oscurece al pasar).
@@ -13,12 +13,15 @@ import { cn } from "@/lib/utils";
 // Exportado para pintar un <Link> como botón (la guía de inicio): un botón
 // que navega es un enlace, y un enlace no puede ser un <button>.
 export const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-sm font-semibold tracking-[-0.01em] transition-[color,background-color,border-color,transform,box-shadow] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[var(--btn-radius,9999px)] text-sm font-semibold tracking-[-0.01em] transition-[color,background-color,border-color,transform,box-shadow] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50",
   {
     variants: {
       variant: {
         default:
-          "bg-primary text-primary-foreground shadow-sm hover:-translate-y-px hover:bg-brand-hover active:translate-y-0",
+          // 070 — Color propio de botones (Ajustes → Marca); sin él, el acento.
+          // El respaldo se resuelve en el botón, así que dentro de la barra
+          // oscura sigue tomando el acento calculado para ella.
+          "bg-[color:var(--btn,var(--accent))] text-[color:var(--btn-fg,var(--accent-fg))] shadow-sm hover:-translate-y-px hover:bg-[color:var(--btn-hover,var(--accent-hover))] active:translate-y-0",
         secondary: "bg-secondary text-secondary-foreground hover:bg-accent",
         outline:
           "border border-border-strong bg-transparent text-foreground hover:-translate-y-px hover:border-foreground active:translate-y-0",

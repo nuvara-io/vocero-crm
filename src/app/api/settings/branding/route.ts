@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { apiError, parseBody, withAuth } from "@/lib/api";
 import { getSessionOrNull } from "@/lib/auth/session";
-import { isValidHex, resolveAccentSet } from "@/lib/branding";
+import { FORMAS_BOTON, isValidHex, LOGO_FONDOS, resolveAccentSet } from "@/lib/branding";
 import { CURRENCIES } from "@/lib/money";
 import { getBranding, saveBranding } from "@/server/branding";
 
@@ -19,6 +19,10 @@ const putSchema = z.object({
   accent: z.string().refine(isValidHex, "Color hex inválido (#rrggbb)"),
   /** La moneda del negocio: la única que el tablero suma. */
   currency: z.enum(CURRENCIES),
+  /** 070 — Opcionales: un cliente viejo que no los manda conserva lo guardado. */
+  logoBackground: z.enum(LOGO_FONDOS).optional(),
+  buttonColor: z.string().refine(isValidHex, "Color hex inválido (#rrggbb)").nullable().optional(),
+  buttonShape: z.enum(FORMAS_BOTON).optional(),
 });
 
 export const PUT = withAuth(async (session, req: Request) => {
@@ -32,8 +36,13 @@ export const PUT = withAuth(async (session, req: Request) => {
   // el logo sin que nadie lo pidiera.
   const actual = await getBranding(session.organizationId);
   await saveBranding(session.organizationId, {
-    ...body.data,
+    name: body.data.name,
+    accent: body.data.accent,
+    currency: body.data.currency,
     favicon: actual.favicon,
+    logoBackground: body.data.logoBackground ?? actual.logoBackground,
+    buttonColor: body.data.buttonColor === undefined ? actual.buttonColor : body.data.buttonColor,
+    buttonShape: body.data.buttonShape ?? actual.buttonShape,
   });
   return Response.json({ ok: true });
 });

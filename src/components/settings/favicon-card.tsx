@@ -140,7 +140,7 @@ export function FaviconCard({ branding }: { branding: Branding }) {
         <p className="text-xs text-text-3">
           PNG, SVG, ICO, JPEG o WebP, hasta{" "}
           {Math.round(MAX_FAVICON_BYTES / 1024)} KB. Cuadrado y con fondo
-          transparente se ve mejor: se dibuja sobre tu color de acento.
+          transparente se ve mejor. En el menú va sobre el fondo que elijas en «Fondo del logo»; en la pestaña del navegador, tal cual.
         </p>
 
         {error && <p className="text-sm text-destructive">{error}</p>}

@@ -107,7 +107,7 @@ export default async function RootLayout({
       <head>
         {/* Acento white-label inyectado en SSR: sin flash de tema */}
         <style
-          dangerouslySetInnerHTML={{ __html: accentCssVariables(branding.accent) }}
+          dangerouslySetInnerHTML={{ __html: accentCssVariables(branding.accent, branding) }}
         />
         {/* 062 — Los temas listos (todos, para cambiar en vivo) y el propio. */}
         <style
