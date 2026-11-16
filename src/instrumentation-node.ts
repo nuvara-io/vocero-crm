@@ -4,6 +4,7 @@ import { mediaDirStatus } from "@/server/media-dir";
 import { leerConfigDespacho } from "@/server/brains/config";
 import { iniciarWorker, tanda } from "@/server/dispatch/worker";
 import { iniciarSeguimiento } from "@/server/seguimiento/runner";
+import { asegurarEtapasDeDemoEnTodas } from "@/server/embudo-demo";
 import { cifrarSecretosEnClaro } from "@/server/zernio/secreto-guardado";
 import { barrido, iniciarBarrido } from "@/server/webhooks/worker";
 
@@ -132,4 +133,6 @@ export function resumeWebhooks(): void {
 export function resumeSeguimiento(): void {
   if (process.env.NODE_ENV === "test") return;
   iniciarSeguimiento();
+  // 073 — «Demo hecha», «No asistió» y «Seguimiento» visibles desde el arranque.
+  void asegurarEtapasDeDemoEnTodas().catch(() => {});
 }

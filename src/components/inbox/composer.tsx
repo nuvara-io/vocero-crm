@@ -28,6 +28,7 @@ import {
   formatRemaining,
   formatRemainingLong,
 } from "./helpers";
+import { SelectNativo } from "@/components/ui/select-nativo";
 import { QuoteBlock } from "./quote-block";
 import { TemplateSender } from "./template-sender";
 import { validarImagenAdjunta } from "@/lib/imagen-adjunta";
@@ -645,22 +646,29 @@ export function Composer({
         </div>
       )}
       {templates.length > 0 && !file && (
-        <div className="mb-2.5 flex flex-wrap gap-1.5">
-          {templates.slice(0, 4).map((t) => (
-            <button
-              key={t.id}
-              className="rounded-full border border-border-strong bg-background px-3 py-1 text-xs font-semibold text-text-2 transition-colors hover:border-brand hover:bg-brand-tint hover:text-brand-text"
-              onClick={() => {
-                const firstName = conversation.contact.name.split(" ")[0] ?? "";
-                setText(t.body.replace(/\{\{\s*1\s*\}\}/g, firstName));
-                taRef.current?.focus();
-                setTimeout(autogrow, 0);
-              }}
-              title={t.body}
-            >
-              {t.name.replace(/_/g, " ")}
-            </button>
-          ))}
+        <div className="mb-2.5">
+          {/* Una lista, no una fila de botones: con muchas plantillas la fila tapaba el chat. */}
+          <SelectNativo
+            aria-label="Usar una plantilla como texto"
+            value=""
+            envoltura="max-w-xs"
+            tamano="sm"
+            onChange={(e) => {
+              const t = templates.find((x) => x.id === e.target.value);
+              if (!t) return;
+              const firstName = conversation.contact.name.split(" ")[0] ?? "";
+              setText(t.body.replace(/\{\{\s*1\s*\}\}/g, firstName));
+              taRef.current?.focus();
+              setTimeout(autogrow, 0);
+            }}
+          >
+            <option value="">Usar una plantilla…</option>
+            {templates.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name.replace(/_/g, " ")}
+              </option>
+            ))}
+          </SelectNativo>
         </div>
       )}
 

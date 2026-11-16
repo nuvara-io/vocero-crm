@@ -1,4 +1,4 @@
-import { asc, eq, gt, inArray, isNull } from "drizzle-orm";
+import { asc, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import { scoped } from "@/lib/db/tenant";
@@ -68,6 +68,26 @@ export async function asegurarEtapasDeDemo(organizationId: string): Promise<Map<
     .from(schema.pipelineStage)
     .where(scoped(schema.pipelineStage.organizationId, organizationId));
   return new Map(todas.map((s) => [s.name.trim().toLowerCase(), s]));
+}
+
+/**
+ * Al arrancar: las organizaciones que ya agendan demos (tienen «Demo agendada»
+ * o una etapa que exige cita) ven las etapas nuevas en el tablero desde ya, sin
+ * esperar a marcar la primera cita. Nunca tumba el arranque.
+ */
+export async function asegurarEtapasDeDemoEnTodas(): Promise<void> {
+  const db = getDb();
+  const filas = await db
+    .selectDistinct({ org: schema.pipelineStage.organizationId })
+    .from(schema.pipelineStage)
+    .where(
+      or(eq(schema.pipelineStage.requiresBooking, true), sql`lower(trim(${schema.pipelineStage.name})) = 'demo agendada'`)
+    );
+  for (const f of filas) {
+    await asegurarEtapasDeDemo(f.org).catch((err) =>
+      console.warn("[demo] no se crearon las etapas de demo:", err instanceof Error ? err.message : err)
+    );
+  }
 }
 
 const temporizadores = new Set<ReturnType<typeof setTimeout>>();
