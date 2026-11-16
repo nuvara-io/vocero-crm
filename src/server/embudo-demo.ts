@@ -24,6 +24,14 @@ const PASO_NO_ASISTIO_2 = 102;
 
 type Stage = typeof schema.pipelineStage.$inferSelect;
 
+/** Clave de nombre sin tildes ni mayúsculas: «No asistio» y «No asistió» son la misma etapa. */
+const clave = (nombre: string) =>
+  nombre
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+
 /**
  * Las tres etapas, justo después de «Demo agendada» (o de la última etapa
  * abierta si no existe). Re-ejecutable: no duplica por nombre.
@@ -35,8 +43,8 @@ export async function asegurarEtapasDeDemo(organizationId: string): Promise<Map<
     .from(schema.pipelineStage)
     .where(scoped(schema.pipelineStage.organizationId, organizationId))
     .orderBy(asc(schema.pipelineStage.position));
-  const porNombre = new Map(actuales.map((s) => [s.name.trim().toLowerCase(), s]));
-  const faltan = ETAPAS_DEMO.filter((n) => !porNombre.has(n.toLowerCase()));
+  const porNombre = new Map(actuales.map((s) => [clave(s.name), s]));
+  const faltan = ETAPAS_DEMO.filter((n) => !porNombre.has(clave(n)));
   if (faltan.length > 0) {
     const ancla =
       porNombre.get("demo agendada") ?? [...actuales].reverse().find((s) => s.kind === "open") ?? actuales[0];
@@ -52,7 +60,7 @@ export async function asegurarEtapasDeDemo(organizationId: string): Promise<Map<
       }
       let pos = desde;
       for (const nombre of ETAPAS_DEMO) {
-        if (porNombre.has(nombre.toLowerCase())) continue;
+        if (porNombre.has(clave(nombre))) continue;
         await tx.insert(schema.pipelineStage).values({
           id: newId("stage"),
           organizationId,
@@ -67,7 +75,11 @@ export async function asegurarEtapasDeDemo(organizationId: string): Promise<Map<
     .select()
     .from(schema.pipelineStage)
     .where(scoped(schema.pipelineStage.organizationId, organizationId));
-  return new Map(todas.map((s) => [s.name.trim().toLowerCase(), s]));
+  // La primera por posición gana si hubiera dos con el mismo nombre.
+  todas.sort((a, b) => a.position - b.position);
+  const mapa = new Map<string, Stage>();
+  for (const s of todas) if (!mapa.has(clave(s.name))) mapa.set(clave(s.name), s);
+  return mapa;
 }
 
 /**
@@ -114,7 +126,7 @@ export async function alMarcarResultadoDeCita(
     const b = rows[0];
     if (!b?.contactId || b.isTest) return;
     const etapas = await asegurarEtapasDeDemo(organizationId);
-    const destino = etapas.get(status === "realizada" ? "demo hecha" : "no asistió");
+    const destino = etapas.get(status === "realizada" ? "demo hecha" : "no asistio");
     const lead = await db
       .select({ id: schema.lead.id, stageId: schema.lead.stageId })
       .from(schema.lead)
