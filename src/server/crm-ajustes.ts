@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import {
   SEGUIMIENTO_POR_DEFECTO,
+  type AjustesNoAsistio,
   type AjustesSeguimiento,
   type ReglaResponsable,
 } from "@/lib/crm-reglas";
@@ -16,12 +17,28 @@ export type AjustesCrm = {
   seguimiento: AjustesSeguimiento;
   /** 072 — Seguimiento de prospectos (día 2 dato útil, día 6 salida): nunca archiva. */
   prospeccion: AjustesSeguimiento;
+  /** 073 — Valor que toma un lead al entrar a «Demo agendada» si no tiene uno. */
+  valorDemoCents: number | null;
+  /** 073 — Recuperar a quien no asistió: mensaje a los N minutos y otro al día. */
+  noAsistio: AjustesNoAsistio;
+};
+
+export type { AjustesNoAsistio };
+
+export const NO_ASISTIO_POR_DEFECTO: AjustesNoAsistio = {
+  enabled: false,
+  minutos: 10,
+  plantilla1: null,
+  dias2: 1,
+  plantilla2: null,
 };
 
 export const AJUSTES_CRM_POR_DEFECTO: AjustesCrm = {
   responsable: { modo: "nadie" },
   seguimiento: SEGUIMIENTO_POR_DEFECTO,
   prospeccion: { ...SEGUIMIENTO_POR_DEFECTO, archivarDias: 0 },
+  valorDemoCents: null,
+  noAsistio: NO_ASISTIO_POR_DEFECTO,
 };
 
 function parse(metadata: string | null): Record<string, unknown> {
@@ -34,7 +51,7 @@ function parse(metadata: string | null): Record<string, unknown> {
   }
 }
 
-function normalizar(raw: unknown): AjustesCrm {
+export function normalizar(raw: unknown): AjustesCrm {
   const r = (typeof raw === "object" && raw !== null ? raw : {}) as Record<string, unknown>;
   const resp = (r.responsable ?? {}) as Record<string, unknown>;
   let responsable: ReglaResponsable = { modo: "nadie" };
@@ -48,6 +65,24 @@ function normalizar(raw: unknown): AjustesCrm {
     seguimiento: normalizarSeguimiento(r.seguimiento, SEGUIMIENTO_POR_DEFECTO.archivarDias),
     // Los prospectos nunca se archivan solos: tras el último paso no se les escribe más.
     prospeccion: { ...normalizarSeguimiento(r.prospeccion, 0), archivarDias: 0 },
+    valorDemoCents:
+      Number.isFinite(r.valorDemoCents) && Number(r.valorDemoCents) > 0 ? Math.round(Number(r.valorDemoCents)) : null,
+    noAsistio: normalizarNoAsistio(r.noAsistio),
+  };
+}
+
+function normalizarNoAsistio(raw: unknown): AjustesNoAsistio {
+  const n = (typeof raw === "object" && raw !== null ? raw : {}) as Record<string, unknown>;
+  const str = (v: unknown) => (typeof v === "string" && v ? v : null);
+  const plantilla1 = str(n.plantilla1);
+  const num = (v: unknown, d: number, min: number, max: number) =>
+    Number.isFinite(v) ? Math.min(max, Math.max(min, Math.floor(Number(v)))) : d;
+  return {
+    enabled: n.enabled === true && plantilla1 !== null,
+    minutos: num(n.minutos, 10, 1, 240),
+    plantilla1,
+    dias2: num(n.dias2, 1, 1, 14),
+    plantilla2: str(n.plantilla2),
   };
 }
 

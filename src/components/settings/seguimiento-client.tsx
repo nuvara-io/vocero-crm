@@ -7,11 +7,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SelectNativo } from "@/components/ui/select-nativo";
 import { Switch } from "@/components/ui/switch";
-import type { AjustesSeguimiento, PasoSeguimiento, ReglaResponsable } from "@/lib/crm-reglas";
+import type { AjustesNoAsistio, AjustesSeguimiento, PasoSeguimiento, ReglaResponsable } from "@/lib/crm-reglas";
 import { cn } from "@/lib/utils";
 
 type Datos = {
-  ajustes: { responsable: ReglaResponsable; seguimiento: AjustesSeguimiento; prospeccion?: AjustesSeguimiento };
+  ajustes: {
+    responsable: ReglaResponsable;
+    seguimiento: AjustesSeguimiento;
+    prospeccion?: AjustesSeguimiento;
+    valorDemoCents?: number | null;
+    noAsistio?: AjustesNoAsistio;
+  };
   equipo: { userId: string; name: string }[];
   plantillas: { id: string; name: string; body: string }[];
   ultimos: { createdAt: string; step: number; ok: boolean; error: string | null; nombre: string }[];
@@ -62,6 +68,7 @@ export function SeguimientoClient() {
       <Reparto datos={datos} onGuardado={cargar} />
       <Seguimiento datos={datos} onGuardado={cargar} />
       <Seguimiento datos={datos} onGuardado={cargar} clave="prospeccion" />
+      <Demos datos={datos} onGuardado={cargar} />
     </div>
   );
 }
@@ -305,6 +312,127 @@ function Seguimiento({
             ))}
           </div>
         )}
+      </CardContent>
+    </Card>
+  );
+}
+
+const NO_ASISTIO_VACIO: AjustesNoAsistio = { enabled: false, minutos: 10, plantilla1: null, dias2: 1, plantilla2: null };
+
+/**
+ * 073 — Lo que pasa alrededor de la demo: el valor con que entra un lead a
+ * «Demo agendada» y la recuperación de quien no asistió.
+ */
+function Demos({ datos, onGuardado }: { datos: Datos; onGuardado: () => Promise<void> }) {
+  const n = datos.ajustes.noAsistio ?? NO_ASISTIO_VACIO;
+  const [valor, setValor] = useState(
+    datos.ajustes.valorDemoCents ? String(Math.round(datos.ajustes.valorDemoCents / 100)) : ""
+  );
+  const [enabled, setEnabled] = useState(n.enabled);
+  const [minutos, setMinutos] = useState(String(n.minutos));
+  const [plantilla1, setPlantilla1] = useState(n.plantilla1 ?? "");
+  const [dias2, setDias2] = useState(String(n.dias2));
+  const [plantilla2, setPlantilla2] = useState(n.plantilla2 ?? "");
+  const [estado, setEstado] = useState<string | null>(null);
+
+  async function enviar() {
+    if (enabled && !plantilla1) return setEstado("Elige la plantilla del primer mensaje");
+    const pesos = Number(valor.replace(/\D/g, ""));
+    const e = await guardar({
+      valorDemoCents: pesos > 0 ? pesos * 100 : null,
+      noAsistio: {
+        enabled,
+        minutos: Math.min(240, Math.max(1, Number(minutos) || 10)),
+        plantilla1: plantilla1 || null,
+        dias2: Math.min(14, Math.max(1, Number(dias2) || 1)),
+        plantilla2: plantilla2 || null,
+      },
+    });
+    setEstado(e ?? "Guardado.");
+    if (!e) await onGuardado();
+  }
+
+  const selectPlantilla = (valorSel: string, set: (v: string) => void, etiqueta: string, vacio: string) => (
+    <SelectNativo value={valorSel} onChange={(e) => set(e.target.value)} aria-label={etiqueta}>
+      <option value="">{vacio}</option>
+      {datos.plantillas.map((t) => (
+        <option key={t.id} value={t.id}>
+          {t.name}
+        </option>
+      ))}
+    </SelectNativo>
+  );
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Demos</CardTitle>
+        <CardDescription>
+          Al marcar una cita como realizada o no asistió, el lead pasa solo a «Demo hecha» o «No asistió». Quien no
+          asistió no se pierde: recibe un mensaje, pasa a «Seguimiento» y, si no contesta, un segundo mensaje.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <Label htmlFor="valor-demo">Valor con que entra a «Demo agendada»</Label>
+          <Input
+            id="valor-demo"
+            inputMode="numeric"
+            placeholder="Sin valor"
+            value={valor}
+            onChange={(e) => setValor(e.target.value.replace(/\D/g, ""))}
+            className="w-32"
+          />
+          <span className="text-xs text-text-3">pesos, solo si el lead no tiene valor todavía</span>
+        </div>
+
+        <div className="flex items-center justify-between rounded-lg border bg-subtle px-4 py-3">
+          <div>
+            <p className="text-sm font-semibold">Recuperar a quien no asistió: {enabled ? "encendido" : "apagado"}</p>
+            <p className="text-xs text-text-3">Solo con plantillas aprobadas por Meta y en horario hábil.</p>
+          </div>
+          <Switch checked={enabled} onCheckedChange={setEnabled} label="Recuperar a quien no asistió" />
+        </div>
+
+        <div className="grid items-end gap-2 sm:grid-cols-[9rem_minmax(0,1fr)]">
+          <div className="space-y-1.5">
+            <Label htmlFor="na-minutos">Primer mensaje a los</Label>
+            <div className="flex items-center gap-2">
+              <Input
+                id="na-minutos"
+                inputMode="numeric"
+                value={minutos}
+                onChange={(e) => setMinutos(e.target.value.replace(/\D/g, ""))}
+                className="w-16"
+              />
+              <span className="text-xs text-text-3">min</span>
+            </div>
+          </div>
+          {selectPlantilla(plantilla1, setPlantilla1, "Plantilla del primer mensaje", "Elige una plantilla")}
+        </div>
+        <div className="grid items-end gap-2 sm:grid-cols-[9rem_minmax(0,1fr)]">
+          <div className="space-y-1.5">
+            <Label htmlFor="na-dias">Si no contesta, a los</Label>
+            <div className="flex items-center gap-2">
+              <Input
+                id="na-dias"
+                inputMode="numeric"
+                value={dias2}
+                onChange={(e) => setDias2(e.target.value.replace(/\D/g, ""))}
+                className="w-16"
+              />
+              <span className="text-xs text-text-3">días</span>
+            </div>
+          </div>
+          {selectPlantilla(plantilla2, setPlantilla2, "Plantilla del segundo mensaje", "Sin segundo mensaje")}
+        </div>
+
+        <div className="flex items-center gap-3">
+          <Button size="sm" onClick={() => void enviar()}>
+            Guardar
+          </Button>
+          {estado && <span className="text-xs text-text-3">{estado}</span>}
+        </div>
       </CardContent>
     </Card>
   );

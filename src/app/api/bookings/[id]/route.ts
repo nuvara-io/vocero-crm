@@ -8,6 +8,7 @@ import {
   retryMeetingLink,
 } from "@/server/agenda/service";
 import { bookingErrorResponse } from "@/server/agenda/http";
+import { alMarcarResultadoDeCita } from "@/server/embudo-demo";
 
 export const dynamic = "force-dynamic";
 
@@ -56,6 +57,8 @@ export const PATCH = withAuth(async (session, req: Request, ctx: Params) => {
           bookingId: id,
           status: body.data.status,
         });
+        // 073 — Demo hecha / No asistió en el pipeline, y la recuperación.
+        await alMarcarResultadoDeCita(session.organizationId, id, body.data.status, session.userId);
         return Response.json({ ok: true });
       }
       case "retry_link": {

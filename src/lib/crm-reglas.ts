@@ -161,3 +161,12 @@ export function decidirSeguimiento(input: {
   if (ajustes.archivarDias > 0 && dias >= ajustes.archivarDias) return { accion: "archivar" };
   return null;
 }
+
+/** 073 — Recuperación de quien no asistió a la demo. */
+export type AjustesNoAsistio = {
+  enabled: boolean;
+  minutos: number;
+  plantilla1: string | null;
+  dias2: number;
+  plantilla2: string | null;
+};

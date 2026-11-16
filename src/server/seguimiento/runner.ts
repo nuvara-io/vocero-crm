@@ -9,6 +9,7 @@ import { primerNombre } from "@/lib/respuestas-rapidas";
 import { countVariables } from "@/lib/templates";
 import { businessTimezone } from "@/server/analytics/period";
 import { ajustesCrm } from "@/server/crm-ajustes";
+import { recuperarNoAsistidos } from "@/server/embudo-demo";
 import { publish } from "@/server/events/bus";
 import { sendTemplate } from "@/server/whatsapp/templates";
 
@@ -68,6 +69,14 @@ export async function tandaSeguimiento(ahora = new Date()): Promise<ResumenTanda
   try {
     const orgs = await getDb().select({ id: schema.organization.id }).from(schema.organization);
     for (const org of orgs) {
+      // 073 — Recuperar a quien no asistió a la demo (si está encendido).
+      if (horarioHabil(ahora, await businessTimezone(org.id))) {
+        const n = await recuperarNoAsistidos(org.id, ahora).catch(() => null);
+        if (n) {
+          resumen.enviadas += n.enviados1 + n.enviados2;
+          resumen.errores += n.errores;
+        }
+      }
       const r = await tandaDeOrganizacion(org.id, ahora);
       resumen.revisadas += r.revisadas;
       resumen.enviadas += r.enviadas;

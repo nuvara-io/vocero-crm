@@ -12,6 +12,8 @@ import { BotSection } from "./bot-section";
 import { HygieneSection } from "./hygiene-section";
 import { defaultRange, RangePicker, type Range } from "./range-picker";
 import { SalesSection } from "./sales-section";
+import { SemanaSection } from "./semana-section";
+import type { RevisionSemanalDto } from "@/lib/revision-semanal";
 
 type Block<T> = { data: T | null; loading: boolean; error: string | null };
 
@@ -77,6 +79,7 @@ export function ResultsClient({
   const [ads, setAds] = useState<Block<AdsBlockDto>>(inicial);
   const [bot, setBot] = useState<Block<BotBlockDto>>(inicial);
   const [hygiene, setHygiene] = useState<Block<HygieneBlockDto>>(inicial);
+  const [semana, setSemana] = useState<Block<RevisionSemanalDto>>(inicial);
 
   useEffect(() => {
     const ctl = new AbortController();
@@ -91,6 +94,7 @@ export function ResultsClient({
   useEffect(() => {
     const ctl = new AbortController();
     void cargar("/api/analytics/hygiene", setHygiene, ctl.signal);
+    void cargar("/api/analytics/semana", setSemana, ctl.signal);
     return () => ctl.abort();
   }, []);
 
@@ -107,6 +111,7 @@ export function ResultsClient({
       </header>
 
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-3 sm:p-6">
+        <SemanaSection {...semana} currency={currency} />
         <SalesSection {...sales} currency={currency} />
         <AdsSection {...ads} />
         <BotSection {...bot} agenda={agenda} />

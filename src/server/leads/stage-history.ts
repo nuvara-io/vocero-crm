@@ -1,4 +1,5 @@
 ﻿import { and, asc, eq } from "drizzle-orm";
+import { ajustesCrm } from "@/server/crm-ajustes";
 import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import { scoped } from "@/lib/db/tenant";
@@ -54,6 +55,11 @@ export type MoveInput = {
 export async function moveLeadToStage(input: MoveInput): Promise<MoveResult> {
   const db = getDb();
   const occurredAt = input.occurredAt ?? new Date();
+  // 073 — Al entrar a una etapa que exige cita (Demo agendada) el lead toma el
+  // valor por defecto si no tiene uno: sin valor no se sabe cuánta plata hay.
+  const valorDemo = await ajustesCrm(input.organizationId)
+    .then((a) => a.valorDemoCents)
+    .catch(() => null);
 
   // 016: se anota aquí dentro y se reporta a Meta DESPUÉS del commit. Una
   // llamada de red dentro de la transacción la mantendría abierta mientras
@@ -107,6 +113,9 @@ export async function moveLeadToStage(input: MoveInput): Promise<MoveResult> {
     const updated = await tx
       .update(schema.lead)
       .set({
+        ...(changed && target.requiresBooking && current.lead.amountCents === null && valorDemo
+          ? { amountCents: valorDemo }
+          : {}),
         ...(input.extra ?? {}),
         stageId: target.id,
         ...(input.position !== undefined ? { position: input.position } : {}),

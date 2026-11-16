@@ -54,6 +54,18 @@ const putSchema = z.object({
   seguimiento: seguimientoSchema.optional(),
   /** 072 */
   prospeccion: seguimientoSchema.optional(),
+  /** 073 — valor por defecto al entrar a Demo agendada (centavos); null = sin valor. */
+  valorDemoCents: z.number().int().min(0).max(1_000_000_000_00).nullable().optional(),
+  /** 073 — recuperación de quien no asistió a la demo. */
+  noAsistio: z
+    .object({
+      enabled: z.boolean(),
+      minutos: z.number().int().min(1).max(240),
+      plantilla1: z.string().min(1).nullable(),
+      dias2: z.number().int().min(1).max(14),
+      plantilla2: z.string().min(1).nullable(),
+    })
+    .optional(),
 });
 
 export const PUT = withAuth(async (session, req: Request) => {
