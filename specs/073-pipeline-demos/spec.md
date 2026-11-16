@@ -8,7 +8,7 @@ Pedido (2026-11-15): aplicar al CRM la plantilla de pipeline de
    se marca el resultado de una cita (`asegurarEtapasDeDemo`).
 2. **Marcar la cita mueve el lead**: realizada → «Demo hecha»; no asistió →
    «No asistió» (`alMarcarResultadoDeCita`, desde `PATCH /api/bookings/[id]`).
-3. **Valor por defecto de la demo** (Ajustes → Reparto y seguimiento → Demos):
+3. **Valor esperado del trato** (la demo es gratis; lo que vale es lo que compra, p. ej. capacitación + saldo) (Ajustes → Reparto y seguimiento → Demos):
    al entrar a una etapa que exige cita, el lead sin valor toma ese valor.
 4. **Recuperar a quien no asistió** (apagado por defecto): plantilla 1 a los N
    minutos (10) de marcarla → el lead pasa a «Seguimiento»; plantilla 2 a los

@@ -374,7 +374,7 @@ function Demos({ datos, onGuardado }: { datos: Datos; onGuardado: () => Promise<
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex flex-wrap items-center gap-2">
-          <Label htmlFor="valor-demo">Valor con que entra a «Demo agendada»</Label>
+          <Label htmlFor="valor-demo">Valor esperado del trato al agendar la demo</Label>
           <Input
             id="valor-demo"
             inputMode="numeric"
@@ -383,7 +383,9 @@ function Demos({ datos, onGuardado }: { datos: Datos; onGuardado: () => Promise<
             onChange={(e) => setValor(e.target.value.replace(/\D/g, ""))}
             className="w-32"
           />
-          <span className="text-xs text-text-3">pesos, solo si el lead no tiene valor todavía</span>
+          <span className="text-xs text-text-3">
+            pesos: lo que pagaría si compra (la demo es gratis). Solo si el lead no tiene valor todavía.
+          </span>
         </div>
 
         <div className="flex items-center justify-between rounded-lg border bg-subtle px-4 py-3">
