@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check, Search } from "lucide-react";
 import {
   nombreLegible,
   sugerirVariables,
@@ -14,13 +13,14 @@ import { countVariables } from "@/lib/templates";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SelectNativo } from "@/components/ui/select-nativo";
 
 /**
  * Selector de plantilla aprobada para conversaciones con ventana cerrada
  * (FR-005/FR-051). Sin plantillas aprobadas muestra el estado vacío.
  *
- * 074 — Tarjetas en vez de una lista nativa, los datos de la plantilla
- * llenados con lo que ya sabe el CRM (nombre, quién escribe, la cita) y una
+ * 074 — Lista desplegable compacta (075: las tarjetas ocupaban demasiado),
+ * los datos de la plantilla llenados con lo que ya sabe el CRM (nombre, quién escribe, la cita) y una
  * vista previa de cómo le llega al cliente.
  */
 export function TemplateSender({
@@ -35,7 +35,6 @@ export function TemplateSender({
   const [variables, setVariables] = useState<string[]>([]);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [filtro, setFiltro] = useState("");
   const [etiquetas, setEtiquetas] = useState<string[]>([]);
   const [datos, setDatos] = useState<DatosPlantilla | null>(null);
 
@@ -104,11 +103,6 @@ export function TemplateSender({
   const variableCount = selected ? countVariables(selected.body) : 0;
   const values = Array.from({ length: variableCount }, (_, i) => variables[i] ?? "");
   const missingValue = values.some((v) => !v.trim());
-  const visibles = filtro.trim()
-    ? templates.filter((t) =>
-        `${t.name} ${t.body}`.toLowerCase().includes(filtro.trim().toLowerCase())
-      )
-    : templates;
 
   function elegir(t: TemplateDto) {
     setSelectedId(t.id);
@@ -149,56 +143,34 @@ export function TemplateSender({
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-sm font-semibold">Elige una plantilla aprobada</p>
-        {templates.length > 5 && (
-          <div className="relative w-44">
-            <Search
-              aria-hidden
-              className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-3"
-              strokeWidth={1.7}
-            />
-            <Input
-              value={filtro}
-              onChange={(e) => setFiltro(e.target.value)}
-              placeholder="Buscar"
-              aria-label="Buscar plantilla"
-              className="h-8 rounded-full pl-8 text-xs"
-            />
-          </div>
-        )}
-      </div>
-
-      <div
-        role="radiogroup"
-        aria-label="Plantilla aprobada"
-        className="grid max-h-44 gap-1.5 overflow-y-auto pr-1 sm:grid-cols-2"
-      >
-        {visibles.map((t) => {
-          const activa = t.id === selectedId;
-          return (
-            <button
-              key={t.id}
-              type="button"
-              role="radio"
-              aria-checked={activa}
-              onClick={() => elegir(t)}
-              className={cn(
-                "rounded-xl border bg-card px-3 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                activa ? "border-brand bg-brand-tint" : "border-border hover:border-border-strong hover:bg-accent"
-              )}
-            >
-              <span className="flex items-center gap-1.5 text-[13px] font-semibold">
-                {activa && <Check className="h-3.5 w-3.5 shrink-0 text-brand" strokeWidth={2} />}
-                <span className="truncate">{nombreLegible(t.name)}</span>
-              </span>
-              <span className="mt-0.5 line-clamp-2 text-[11.5px] leading-snug text-text-3">{t.body}</span>
-            </button>
-          );
-        })}
-        {visibles.length === 0 && (
-          <p className="text-xs text-text-3">Ninguna plantilla coincide con «{filtro}».</p>
-        )}
+      <div className="flex items-center gap-2">
+        <SelectNativo
+          aria-label="Plantilla aprobada"
+          envoltura="min-w-0 flex-1"
+          value={selectedId}
+          onChange={(e) => {
+            const t = templates.find((x) => x.id === e.target.value);
+            if (t) elegir(t);
+            else {
+              setSelectedId("");
+              setVariables([]);
+            }
+          }}
+        >
+          <option value="">Elige una plantilla aprobada…</option>
+          {templates.map((t) => (
+            <option key={t.id} value={t.id}>
+              {nombreLegible(t.name)}
+            </option>
+          ))}
+        </SelectNativo>
+        <Button
+          className="shrink-0"
+          onClick={() => void send()}
+          disabled={!selected || sending || missingValue}
+        >
+          {sending ? "Enviando…" : "Enviar plantilla"}
+        </Button>
       </div>
 
       {selected && (
@@ -254,14 +226,9 @@ export function TemplateSender({
       )}
 
       {error && <p className="text-xs text-destructive">{error}</p>}
-      <div className="flex items-center gap-3">
-        <Button onClick={() => void send()} disabled={!selected || sending || missingValue}>
-          {sending ? "Enviando…" : "Enviar plantilla"}
-        </Button>
-        {selected && missingValue && (
-          <span className="text-xs text-warning-text">Llena los datos en amarillo para poder enviarla.</span>
-        )}
-      </div>
+      {selected && missingValue && (
+        <p className="text-xs text-warning-text">Llena los datos en amarillo para poder enviarla.</p>
+      )}
     </div>
   );
 }
