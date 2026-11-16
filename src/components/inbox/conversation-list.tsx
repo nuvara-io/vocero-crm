@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { Check, CheckSquare, Clock3, Hourglass, Inbox, Megaphone, SlidersHorizontal, Search, Sparkles, UserCheck, UserRound, X } from "lucide-react";
 import type { ConversationDto } from "@/lib/types";
 import { etiquetaDeOrigen, titularDeOrigen } from "@/lib/anuncios";
@@ -16,7 +16,17 @@ import { emptyInboxDescription, formatTime, previewText } from "./helpers";
 import { EVENTO_BORRADOR, leerBorrador } from "@/lib/borradores";
 import { atajoBandeja, esCampoDeTexto, sirveEscribiendo, vecina } from "@/lib/atajos";
 import { hayDialogoAbierto } from "@/components/atajos-globales";
-import { DIAS_SEGUIMIENTO, diasDesde, etiquetaVence, pideSeguimiento, porVencer } from "@/lib/filtros-bandeja";
+import {
+  DIAS_SEGUIMIENTO,
+  diasDesde,
+  enVista,
+  etiquetaVence,
+  ordenDeGrupo,
+  pideSeguimiento,
+  porVencer,
+  VISTAS_BANDEJA,
+  type VistaBandeja,
+} from "@/lib/filtros-bandeja";
 import { nombreCorto, useEquipo } from "@/lib/equipo";
 import { LoteBar } from "./lote-bar";
 
@@ -104,7 +114,9 @@ export function ConversationList({
   const [query, setQuery] = useState("");
   // 052 (enmienda) — Pestañas y un botón «Filtrar» con lo demás. 067 suma
   // «Archivadas»: lo archivado no sale en las otras dos.
-  const [filter, setFilter] = useState<"all" | "unread" | "archived">("all");
+  // 075 — Vistas por lo que toca hacer (antes «Todas | No leídas | Archivadas»).
+  const [vista, setVista] = useState<VistaBandeja>("todas");
+  const [soloNoLeidas, setSoloNoLeidas] = useState(false);
   // 067 — Responsable ("all" | "none" | userId) y días de seguimiento (0 = sin filtro).
   const [responsable, setResponsable] = useState<string>("all");
   const [diasSeguimiento, setDiasSeguimiento] = useState(0);
@@ -214,21 +226,16 @@ export function ConversationList({
         (responsable === "none" ? c.assignee === null : c.assignee?.id === responsable)) &&
       (diasSeguimiento === 0 || pideSeguimiento(c, diasSeguimiento, ahora))
   );
-  const activas = filtrado.filter((c) => !c.archivedAt);
-  const archivadas = filtrado.filter((c) => c.archivedAt);
-  const unreadCount = activas.filter((c) => c.unreadCount > 0).length;
-  const visible =
-    filter === "archived"
-      ? archivadas
-      : filter === "unread"
-        ? activas.filter((c) => c.unreadCount > 0)
-        : activas;
+  const enLaVista = (v: VistaBandeja) =>
+    filtrado.filter((c) => enVista(c, v) && (!soloNoLeidas || c.unreadCount > 0));
+  // En «En demo» y «Clientes» la lista va agrupada por etapa (orden estable:
+  // dentro de cada etapa sigue lo más reciente arriba).
+  const agrupar = vista === "demo" || vista === "clientes";
+  const visible = agrupar
+    ? [...enLaVista(vista)].sort((a, b) => ordenDeGrupo(a.stageName) - ordenDeGrupo(b.stageName))
+    : enLaVista(vista);
   visibleRef.current = visible.map((c) => c.id);
-  const pestanas: { id: typeof filter; label: string; count: number }[] = [
-    { id: "all", label: "Todas", count: activas.length },
-    { id: "unread", label: "No leídas", count: unreadCount },
-    { id: "archived", label: "Archivadas", count: archivadas.length },
-  ];
+  const pestanas = VISTAS_BANDEJA.map((v) => ({ id: v.id, label: v.label, count: enLaVista(v.id).length }));
   const nombreResponsable =
     responsable === "none"
       ? "Sin responsable"
@@ -238,13 +245,15 @@ export function ConversationList({
     (soloPorVencer ? 1 : 0) +
     (soloAnuncios ? 1 : 0) +
     (responsable !== "all" ? 1 : 0) +
-    (diasSeguimiento > 0 ? 1 : 0);
+    (diasSeguimiento > 0 ? 1 : 0) +
+    (soloNoLeidas ? 1 : 0);
   function limpiarFiltros() {
     setStage("all");
     setSoloPorVencer(false);
     setSoloAnuncios(false);
     setResponsable("all");
     setDiasSeguimiento(0);
+    setSoloNoLeidas(false);
   }
   // 067 — Lo seleccionado que sigue a la vista (un filtro puede esconderlo).
   const seleccionVisible = visible.filter((c) => seleccion.has(c.id));
@@ -365,29 +374,40 @@ export function ConversationList({
           etapa, «Por vencer» y «De anuncios» viven en su menú, y lo elegido
           se ve abajo como etiquetas que se quitan con ✕. */}
       <div className="border-b px-4">
-        <div className="flex items-center gap-4">
-          <div role="tablist" aria-label="Qué conversaciones ver" className="flex items-center gap-4">
+        <div className="flex items-start gap-2 py-2">
+          <div
+            role="tablist"
+            aria-label="Qué conversaciones ver"
+            className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5"
+          >
             {pestanas.map((f) => (
               <button
                 key={f.id}
                 role="tab"
-                aria-selected={filter === f.id}
-                onClick={() => setFilter(f.id)}
+                aria-selected={vista === f.id}
+                onClick={() => setVista(f.id)}
                 className={cn(
-                  "-mb-px flex items-center gap-1.5 whitespace-nowrap border-b-2 py-2.5 text-[13px] font-semibold transition-colors",
+                  "flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-1 text-[12px] font-semibold transition-colors",
                   FOCO_SEPARADO,
-                  filter === f.id
-                    ? "border-brand text-foreground"
-                    : "border-transparent text-text-3 hover:text-foreground"
+                  vista === f.id
+                    ? "border-foreground bg-foreground text-background"
+                    : "border-border-strong text-text-2 hover:border-text-3 hover:text-foreground"
                 )}
               >
                 {f.label}
-                <span className="font-mono text-[11px] font-medium text-text-3">{f.count}</span>
+                <span
+                  className={cn(
+                    "font-mono text-[10.5px] font-medium",
+                    vista === f.id ? "text-background/70" : "text-text-3"
+                  )}
+                >
+                  {f.count}
+                </span>
               </button>
             ))}
           </div>
 
-          <div ref={menuRef} className="relative ml-auto">
+          <div ref={menuRef} className="relative shrink-0">
             <button
               type="button"
               onClick={() => setMenuFiltros((v) => !v)}
@@ -455,6 +475,15 @@ export function ConversationList({
                       </option>
                     ))}
                   </SelectNativo>
+                </label>
+                <label className="flex cursor-pointer items-center gap-2 text-[13px]">
+                  <input
+                    type="checkbox"
+                    checked={soloNoLeidas}
+                    onChange={(e) => setSoloNoLeidas(e.target.checked)}
+                    className="h-4 w-4 accent-[var(--accent)]"
+                  />
+                  <span className="flex-1">Solo no leídas</span>
                 </label>
                 {/* Como antes: sin ninguna, la casilla no aparece (salvo que esté marcada). */}
                 {(venciendo.length > 0 || soloPorVencer) && (
@@ -551,7 +580,7 @@ export function ConversationList({
             {/* 028: un canal en el que nadie ha escrito no es una búsqueda fallida. */}
             {inbox !== "all" &&
             !query &&
-            filter === "all" &&
+            vista === "todas" &&
             nFiltros === 0 &&
             !conversations.some((c) => c.channel === inbox)
               ? `Nadie ha escrito por ${CHANNEL_LABEL[inbox]} todavía.`
@@ -559,11 +588,24 @@ export function ConversationList({
           </p>
         ) : (
           <ul>
-            {visible.map((c) => {
+            {visible.map((c, i) => {
               const unread = c.unreadCount > 0;
               const active = selectedId === c.id;
+              const grupo = agrupar && (i === 0 || visible[i - 1]!.stageName !== c.stageName);
               return (
-                <li key={c.id} className="relative border-b border-border">
+                <Fragment key={c.id}>
+                {grupo && (
+                  <li
+                    aria-hidden
+                    className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-subtle/95 px-4 py-1.5 backdrop-blur"
+                  >
+                    <span className="kicker text-text-2">{c.stageName ?? "Sin etapa"}</span>
+                    <span className="font-mono text-[11px] text-text-3">
+                      {visible.filter((x) => x.stageName === c.stageName).length}
+                    </span>
+                  </li>
+                )}
+                <li className="relative border-b border-border">
                   <button
                     onClick={() => (seleccionando ? alternar(c.id) : onSelect(c.id))}
                     // 055 — Cuál está abierta, para Alt+J/K y los lectores de pantalla.
@@ -701,6 +743,7 @@ export function ConversationList({
                     </span>
                   </button>
                 </li>
+                </Fragment>
               );
             })}
           </ul>
@@ -709,7 +752,7 @@ export function ConversationList({
       {seleccionando && seleccionVisible.length > 0 && (
         <LoteBar
           conversaciones={seleccionVisible}
-          enArchivadas={filter === "archived"}
+          enArchivadas={vista === "cerrados" && seleccionVisible.every((c) => c.archivedAt)}
           equipo={equipo ?? []}
           onHecho={() => {
             salirDeSeleccion();

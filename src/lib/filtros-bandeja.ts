@@ -49,3 +49,78 @@ export function diasDesde(iso: string | null, ahora: Date): number | null {
   if (!iso) return null;
   return Math.floor((ahora.getTime() - Date.parse(iso)) / 86_400_000);
 }
+
+/**
+ * 075 — Las vistas de la bandeja, por lo que toca hacer con cada chat:
+ *  - «Por contestar»: el cliente habló último (cualquier etapa abierta o de cliente).
+ *  - «Esperando respuesta»: hablamos últimos, antes de la demo.
+ *  - «En demo»: Demo agendada, Demo hecha, No asistió, Seguimiento.
+ *  - «Clientes»: etapas ganadas (Registrado, Activado…).
+ *  - «Cerrados»: perdidos y archivados.
+ * «Por contestar» se cruza con «En demo» y «Clientes» a propósito: lo urgente
+ * se ve junto, sin importar la etapa.
+ */
+export type VistaBandeja = "todas" | "por_contestar" | "esperando" | "demo" | "clientes" | "cerrados";
+
+export const VISTAS_BANDEJA: { id: VistaBandeja; label: string }[] = [
+  { id: "todas", label: "Todas" },
+  { id: "por_contestar", label: "Por contestar" },
+  { id: "esperando", label: "Esperando" },
+  { id: "demo", label: "En demo" },
+  { id: "clientes", label: "Clientes" },
+  { id: "cerrados", label: "Cerrados" },
+];
+
+type ParaVista = {
+  lastDirection: "in" | "out" | null;
+  stageKind: "open" | "won" | "lost" | null;
+  stageName: string | null;
+  archivedAt: string | null;
+};
+
+const clave = (s: string | null) =>
+  (s ?? "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .trim()
+    .toLowerCase();
+
+/** Orden de las etapas de demo para agruparlas en la vista. */
+export const ETAPAS_DE_DEMO = ["demo agendada", "demo hecha", "no asistio", "seguimiento"] as const;
+const ETAPAS_DE_CLIENTE = ["registrado", "activado", "cliente"];
+
+export function esCerrado(c: ParaVista): boolean {
+  return Boolean(c.archivedAt) || c.stageKind === "lost";
+}
+export function esCliente(c: ParaVista): boolean {
+  return !esCerrado(c) && (c.stageKind === "won" || ETAPAS_DE_CLIENTE.includes(clave(c.stageName)));
+}
+export function esDemo(c: ParaVista): boolean {
+  return !esCerrado(c) && !esCliente(c) && (ETAPAS_DE_DEMO as readonly string[]).includes(clave(c.stageName));
+}
+
+export function enVista(c: ParaVista, vista: VistaBandeja): boolean {
+  switch (vista) {
+    case "todas":
+      return !esCerrado(c);
+    case "cerrados":
+      return esCerrado(c);
+    case "por_contestar":
+      return !esCerrado(c) && c.lastDirection === "in";
+    case "esperando":
+      return !esCerrado(c) && !esCliente(c) && !esDemo(c) && c.lastDirection !== "in";
+    case "demo":
+      return esDemo(c);
+    case "clientes":
+      return esCliente(c);
+  }
+}
+
+/** En «En demo» y «Clientes» la lista va por etapa: este es el orden del grupo. */
+export function ordenDeGrupo(stageName: string | null): number {
+  const k = clave(stageName);
+  const i = (ETAPAS_DE_DEMO as readonly string[]).indexOf(k);
+  if (i >= 0) return i;
+  const j = ETAPAS_DE_CLIENTE.indexOf(k);
+  return j >= 0 ? 10 + j : 99;
+}
