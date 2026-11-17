@@ -10,6 +10,8 @@ export const dynamic = "force-dynamic";
 const contacto = {
   telefono: z.string().max(40).nullish(),
   email: z.string().email().max(200).nullish(),
+  /** 080 — El `c` del enlace de registro personalizado (id del lead). */
+  crmRef: z.string().max(64).nullish(),
 };
 
 const avisoEtapaSchema = z
@@ -18,9 +20,13 @@ const avisoEtapaSchema = z
     estado: z.enum(["registrado", "activado"]),
     etapaRegistrado: z.string().min(1).max(200).optional(),
     archivar: z.boolean().optional(),
+    /** 080 — La cuenta en la plataforma y su nombre (la empresa). */
+    platformOrgId: z.string().min(1).max(120).nullish(),
+    nombre: z.string().max(200).nullish(),
+    codigo: z.string().max(60).nullish(),
   })
-  .refine((a) => Boolean(a.telefono || a.email), {
-    message: "Hace falta teléfono o correo",
+  .refine((a) => Boolean(a.telefono || a.email || a.crmRef || a.platformOrgId), {
+    message: "Hace falta teléfono, correo, enlace o cuenta",
   });
 
 /**
@@ -92,11 +98,13 @@ export async function POST(req: Request) {
         const r = await registrarPago(organizationId, { ...aviso, pagadoEn: new Date(aviso.pagadoEn) });
         if (r.nueva) total.ventasNuevas++;
       }
-      if (!aviso.telefono && !aviso.email) continue;
+      if (!aviso.telefono && !aviso.email && !aviso.crmRef && !aviso.platformOrgId) continue;
     }
     const r = await aplicarAvisoPlataforma(organizationId, {
       telefono: aviso.telefono,
       email: aviso.email,
+      crmRef: aviso.crmRef,
+      platformOrgId: "platformOrgId" in aviso ? aviso.platformOrgId : null,
       estado: aviso.estado === "pagado" ? "activado" : aviso.estado,
       etapaRegistrado: "etapaRegistrado" in aviso ? aviso.etapaRegistrado : undefined,
       archivar: aviso.archivar,

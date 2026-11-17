@@ -2,6 +2,7 @@ import { and, eq, or, sql } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { scoped } from "@/lib/db/tenant";
 import { publish } from "@/server/events/bus";
+import { upsertFicha } from "@/server/bot/ficha";
 import { moveLeadToStage } from "@/server/leads/stage-history";
 
 /**
@@ -23,6 +24,10 @@ export type EstadoPlataforma = "registrado" | "activado";
 export type AvisoPlataforma = {
   telefono?: string | null;
   email?: string | null;
+  /** 080 — El lead exacto: el `c` del enlace de registro que le mandó el CRM. */
+  crmRef?: string | null;
+  /** 080 — La cuenta en la plataforma: se guarda en la ficha para cruces futuros. */
+  platformOrgId?: string | null;
   estado: EstadoPlataforma;
   /** Nombre de la etapa para «registrado»; por defecto «Registrado». */
   etapaRegistrado?: string;
@@ -59,14 +64,24 @@ export type ContactoPlataforma = {
  */
 export async function buscarContactosPlataforma(
   organizationId: string,
-  datos: { telefono?: string | null; email?: string | null }
+  datos: {
+    telefono?: string | null;
+    email?: string | null;
+    crmRef?: string | null;
+    platformOrgId?: string | null;
+  }
 ): Promise<ContactoPlataforma[]> {
   const db = getDb();
   const identidad = datos.telefono ? telefonoComoIdentidad(datos.telefono) : null;
   const email = datos.email?.trim().toLowerCase() || null;
-  if (!identidad && !email) return [];
+  // 080 — Enlace personalizado (`c=ld_…`) y cuenta ya vista: los cruces exactos.
+  const crmRef = datos.crmRef?.trim() || null;
+  const platformOrgId = datos.platformOrgId?.trim() || null;
+  if (!identidad && !email && !crmRef && !platformOrgId) return [];
 
   const condiciones = [
+    crmRef ? eq(schema.lead.id, crmRef) : undefined,
+    platformOrgId ? sql`${schema.contact.ficha}->>'platformOrgId' = ${platformOrgId}` : undefined,
     identidad ? eq(schema.contact.waIdentity, identidad) : undefined,
     identidad ? eq(sql`regexp_replace(coalesce(${schema.contact.phone}, ''), '\\D', '', 'g')`, identidad) : undefined,
     email ? sql`lower(${schema.contact.ficha}->>'correo') = ${email}` : undefined,
@@ -100,6 +115,7 @@ export async function aplicarAvisoPlataforma(
   const contactos = await buscarContactosPlataforma(organizationId, aviso);
 
   if (contactos.length === 0) return { encontrados: 0, movidos: 0, archivados: 0 };
+  await recordarCuenta(organizationId, contactos, aviso);
 
   const etapas = await db
     .select()
@@ -160,4 +176,32 @@ export async function aplicarAvisoPlataforma(
   }
 
   return { encontrados: contactos.length, movidos, archivados };
+}
+
+/**
+ * 080 — Guarda en la ficha la cuenta de la plataforma (y el correo si no lo
+ * tenía): el siguiente aviso de esa cuenta cruza aunque no traiga el enlace.
+ */
+export async function recordarCuenta(
+  organizationId: string,
+  contactos: readonly ContactoPlataforma[],
+  aviso: { platformOrgId?: string | null; email?: string | null }
+): Promise<void> {
+  const platformOrgId = aviso.platformOrgId?.trim() || null;
+  const email = aviso.email?.trim().toLowerCase() || null;
+  if ((!platformOrgId && !email) || contactos.length === 0) return;
+  const db = getDb();
+  for (const c of contactos) {
+    const [fila] = await db
+      .select({ ficha: schema.contact.ficha })
+      .from(schema.contact)
+      .where(scoped(schema.contact.organizationId, organizationId, eq(schema.contact.id, c.contactId)))
+      .limit(1);
+    const ficha = (fila?.ficha ?? {}) as Record<string, unknown>;
+    const patch: Record<string, string> = {};
+    if (platformOrgId && ficha.platformOrgId !== platformOrgId) patch.platformOrgId = platformOrgId;
+    if (email && !ficha.correo && !ficha.email) patch.correo = email;
+    // La única puerta que escribe la ficha (acota por organización y normaliza).
+    if (Object.keys(patch).length > 0) await upsertFicha({ organizationId, contactId: c.contactId, ficha: patch });
+  }
 }

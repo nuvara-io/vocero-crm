@@ -28,6 +28,7 @@ type Datos = {
     noAsistio?: AjustesNoAsistio;
     recordatorio?: AjustesRecordatorio;
     filtroPerfil?: { modo: ModoFiltroPerfil };
+    registro?: { url: string | null; codigo: string | null };
   };
   equipo: { userId: string; name: string }[];
   plantillas: { id: string; name: string; body: string }[];
@@ -78,6 +79,7 @@ export function SeguimientoClient() {
     <div className="max-w-2xl space-y-6">
       <Reparto datos={datos} onGuardado={cargar} />
       <FiltroPerfil datos={datos} onGuardado={cargar} />
+      <EnlaceRegistro datos={datos} onGuardado={cargar} />
       <Seguimiento datos={datos} onGuardado={cargar} />
       <Seguimiento datos={datos} onGuardado={cargar} clave="prospeccion" />
       <Demos datos={datos} onGuardado={cargar} />
@@ -643,6 +645,69 @@ function FiltroPerfil({ datos, onGuardado }: { datos: Datos; onGuardado: () => P
             onClick={() => void revisarAbiertos()}
           >
             {revisando ? "Revisando…" : "Revisar chats abiertos"}
+          </Button>
+          {estado && <span className="text-xs text-text-3">{estado}</span>}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * 080 — El enlace de registro personal de cada lead. La plataforma devuelve su
+ * `c` al registrarse y al pagar, y el CRM mueve al lead exacto.
+ */
+function EnlaceRegistro({ datos, onGuardado }: { datos: Datos; onGuardado: () => Promise<void> }) {
+  const r = datos.ajustes.registro ?? { url: null, codigo: null };
+  const [url, setUrl] = useState(r.url ?? "");
+  const [codigo, setCodigo] = useState(r.codigo ?? "");
+  const [estado, setEstado] = useState<string | null>(null);
+
+  async function enviar() {
+    const e = await guardar({
+      registro: { url: url.trim() || null, codigo: codigo.trim().toUpperCase() || null },
+    });
+    setEstado(e ?? "Guardado.");
+    if (!e) await onGuardado();
+  }
+
+  const ejemplo = url.trim()
+    ? `${url.trim()}?${codigo.trim() ? `code=${codigo.trim().toUpperCase()}&` : ""}c=ld_…`
+    : null;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Enlace de registro por lead</CardTitle>
+        <CardDescription>
+          Cada lead recibe su propio enlace a la plataforma. Cuando se registra o paga con él, el lead pasa solo a
+          Registrado y luego a Activado con el monto real, sin depender de que coincidan el teléfono o el correo.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="space-y-1.5">
+          <Label htmlFor="registro-url">Página de registro</Label>
+          <Input
+            id="registro-url"
+            value={url}
+            placeholder="https://app.nuvara.com.co/signup"
+            onChange={(e) => setUrl(e.target.value)}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="registro-codigo">Código de campaña (opcional)</Label>
+          <Input
+            id="registro-codigo"
+            value={codigo}
+            placeholder="NUVARA20"
+            onChange={(e) => setCodigo(e.target.value)}
+            className="w-40"
+          />
+        </div>
+        {ejemplo && <p className="break-all text-xs text-text-3">Así queda: {ejemplo}</p>}
+        <div className="flex items-center gap-3">
+          <Button size="sm" onClick={() => void enviar()}>
+            Guardar
           </Button>
           {estado && <span className="text-xs text-text-3">{estado}</span>}
         </div>

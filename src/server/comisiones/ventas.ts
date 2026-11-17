@@ -19,6 +19,8 @@ export type PagoPlataforma = {
   nombre?: string | null;
   telefono?: string | null;
   email?: string | null;
+  /** 080 — El lead exacto, por el enlace de registro personalizado. */
+  crmRef?: string | null;
   codigo?: string | null;
   montoCents: number;
   moneda?: string | null;
@@ -49,7 +51,10 @@ export async function registrarPago(organizationId: string, pago: PagoPlataforma
   const conLead = contactos.find((c) => c.leadId) ?? contactos[0] ?? null;
   // 069 — ¿Alguien del equipo ya la había registrado a mano (otro WhatsApp u
   // otro canal)? Se reconoce por el correo del cliente.
-  const manual = await ventaManualDe(organizationId, pago.email);
+  const manual =
+    (await ventaManualDe(organizationId, pago.email)) ??
+    // 080 — O la marcó «Activado» a mano en el chat (venta ligada al lead).
+    (conLead?.leadId ? await ventaManualDeLead(organizationId, conLead.leadId) : null);
   const { userId, fuente } = atribuir({
     codigo: pago.codigo,
     duenosDeCodigo: await duenosDeCodigoHoy(organizationId),
@@ -101,6 +106,25 @@ export async function registrarPago(organizationId: string, pago: PagoPlataforma
 }
 
 /** La venta manual vigente (por confirmar o confirmada) de un cliente, por correo. */
+async function ventaManualDeLead(organizationId: string, leadId: string) {
+  const rows = await getDb()
+    .select()
+    .from(schema.sale)
+    .where(
+      scoped(
+        schema.sale.organizationId,
+        organizationId,
+        eq(schema.sale.origin, "manual"),
+        eq(schema.sale.leadId, leadId),
+        or(eq(schema.sale.status, "por_confirmar"), eq(schema.sale.status, "confirmada")),
+        isNull(schema.sale.voidedAt)
+      )
+    )
+    .orderBy(schema.sale.createdAt)
+    .limit(1);
+  return rows[0] ?? null;
+}
+
 async function ventaManualDe(organizationId: string, email: string | null | undefined) {
   const correo = email?.trim().toLowerCase();
   if (!correo) return null;

@@ -34,6 +34,7 @@ import { cn, formatPhone } from "@/lib/utils";
 import { AnuncioOrigen } from "@/components/anuncio-origen";
 import { ContactAvatar } from "@/components/avatar";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { SelectNativo } from "@/components/ui/select-nativo";
 import { Textarea } from "@/components/ui/textarea";
@@ -93,6 +94,9 @@ export function ContactPanel({
     currency: "COP",
   });
   const [activando, setActivando] = useState(false);
+  // 080 — Enlace de registro personal del lead y aviso de «copiado».
+  const [enlace, setEnlace] = useState<string | null>(null);
+  const [copiado, setCopiado] = useState(false);
   const [avisoActivado, setAvisoActivado] = useState<string | null>(null);
   // 018: de qué anuncio llegó; null si escribió por su cuenta.
   const [anuncio, setAnuncio] = useState<AnuncioDto | null>(null);
@@ -133,6 +137,7 @@ export function ContactPanel({
       setCurrentStageId(detail.stage?.id ?? null);
       setLeadId(detail.lead?.id ?? null);
       setLeadMonto({ cents: detail.lead?.amountCents ?? null, currency: detail.lead?.currency ?? "COP" });
+      setEnlace(detail.lead?.enlaceRegistro ?? null);
       setAnuncio(detail.anuncio ?? null);
     }
     if (stagesRes) setStages(stagesRes.stages);
@@ -154,6 +159,7 @@ export function ContactPanel({
       setCurrentStageId(detail.stage?.id ?? null);
       setLeadId(detail.lead?.id ?? null);
       setLeadMonto({ cents: detail.lead?.amountCents ?? null, currency: detail.lead?.currency ?? "COP" });
+      setEnlace(detail.lead?.enlaceRegistro ?? null);
       // La imagen del creativo se copia después de que entra el mensaje: este
       // refetch en vivo es lo que la hace aparecer sin recargar.
       setAnuncio(detail.anuncio ?? null);
@@ -498,6 +504,28 @@ export function ContactPanel({
               </Button>
             )}
             {avisoActivado && <p className="mt-2 text-xs text-success-text">{avisoActivado}</p>}
+            {enlace && (
+              <div className="mt-3 space-y-1">
+                <p className="text-[11px] text-text-3">
+                  Su enlace de registro: si se registra con este, pasa solo a Registrado y luego a Activado con el
+                  pago real.
+                </p>
+                <div className="flex gap-2">
+                  <Input value={enlace} readOnly className="h-8 text-[11px]" onFocus={(e) => e.target.select()} />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={async () => {
+                      await navigator.clipboard?.writeText(enlace).catch(() => {});
+                      setCopiado(true);
+                      setTimeout(() => setCopiado(false), 1500);
+                    }}
+                  >
+                    {copiado ? "Copiado" : "Copiar"}
+                  </Button>
+                </div>
+              </div>
+            )}
           </section>
         )}
 

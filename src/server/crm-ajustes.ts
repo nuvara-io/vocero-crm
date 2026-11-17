@@ -12,6 +12,7 @@ import {
   type SecuenciaEtapa,
 } from "@/lib/crm-reglas";
 import type { ModoFiltroPerfil } from "@/lib/perfil";
+import { normalizarRegistro, REGISTRO_POR_DEFECTO, type AjustesRegistro } from "@/lib/enlace-registro";
 
 /**
  * 071 — Ajustes del CRM que no merecen tabla propia: viven en
@@ -31,6 +32,8 @@ export type AjustesCrm = {
   recordatorio: AjustesRecordatorio;
   /** 078 — Filtro de leads fuera de perfil (préstamos, empleo…). */
   filtroPerfil: { modo: ModoFiltroPerfil };
+  /** 080 — Enlace de registro personal por lead (cruce con la plataforma). */
+  registro: AjustesRegistro;
 };
 
 export type { AjustesNoAsistio };
@@ -51,6 +54,7 @@ export const AJUSTES_CRM_POR_DEFECTO: AjustesCrm = {
   noAsistio: NO_ASISTIO_POR_DEFECTO,
   recordatorio: RECORDATORIO_POR_DEFECTO,
   filtroPerfil: { modo: "apagado" },
+  registro: REGISTRO_POR_DEFECTO,
 };
 
 function parse(metadata: string | null): Record<string, unknown> {
@@ -82,6 +86,7 @@ export function normalizar(raw: unknown): AjustesCrm {
     noAsistio: normalizarNoAsistio(r.noAsistio),
     recordatorio: normalizarRecordatorio(r.recordatorio),
     filtroPerfil: normalizarFiltroPerfil(r.filtroPerfil),
+    registro: normalizarRegistro(r.registro),
   };
 }
 

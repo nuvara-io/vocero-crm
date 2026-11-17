@@ -1,3 +1,5 @@
+import { enlaceRegistro } from "@/lib/enlace-registro";
+import { ajustesCrm } from "@/server/crm-ajustes";
 import { and, eq } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { apiError } from "@/lib/api";
@@ -120,6 +122,7 @@ export async function GET(req: Request) {
     citasParaContexto(organizationId, contact.id),
     anuncioDelContacto(organizationId, contact.id),
   ]);
+  const { registro } = await ajustesCrm(organizationId);
   const nextStages = leadRows[0]
     ? await siguientesDelLead(organizationId, leadRows[0].lead.stageId)
     : [];
@@ -134,7 +137,13 @@ export async function GET(req: Request) {
       waIdentity: contact.waIdentity,
       channel: contact.channel,
       phone: contact.phone,
-      ficha: serializeFicha(contact),
+      // 080 — El enlace personal también en la ficha, donde el agente ya mira.
+      ficha: {
+        ...serializeFicha(contact),
+        ...(leadRows[0] && enlaceRegistro(registro, leadRows[0].lead.id)
+          ? { enlaceRegistro: enlaceRegistro(registro, leadRows[0].lead.id) }
+          : {}),
+      },
     },
     conversation: {
       id: conversation.id,
@@ -155,7 +164,13 @@ export async function GET(req: Request) {
       ),
     },
     lead: leadRows[0]
-      ? { id: leadRows[0].lead.id, stageName: leadRows[0].stage.name, nextStages }
+      ? {
+          id: leadRows[0].lead.id,
+          stageName: leadRows[0].stage.name,
+          nextStages,
+          /** 080 — Enlace de registro PERSONAL: usar este en vez del genérico. */
+          enlaceRegistro: enlaceRegistro(registro, leadRows[0].lead.id),
+        }
       : null,
     adOrigen: anuncio
       ? {

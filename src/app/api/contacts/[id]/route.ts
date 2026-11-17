@@ -1,3 +1,5 @@
+import { enlaceRegistro } from "@/lib/enlace-registro";
+import { ajustesCrm } from "@/server/crm-ajustes";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { apiError, parseBody, withAuth } from "@/lib/api";
@@ -46,7 +48,13 @@ export const GET = withAuth(async (session, _req: Request, ctx: Params) => {
       : null,
     // 076 — El monto del lead, para prellenar «Marcar activado».
     lead: stageRow
-      ? { id: stageRow.lead.id, amountCents: stageRow.lead.amountCents, currency: stageRow.lead.currency }
+      ? {
+          id: stageRow.lead.id,
+          amountCents: stageRow.lead.amountCents,
+          currency: stageRow.lead.currency,
+          // 080 — Su enlace de registro personal (si está configurado).
+          enlaceRegistro: enlaceRegistro((await ajustesCrm(session.organizationId)).registro, stageRow.lead.id),
+        }
       : null,
   });
 });
