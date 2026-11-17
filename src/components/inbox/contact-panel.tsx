@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Archive,
+  BadgeCheck,
   ArchiveRestore,
   Cable,
   Check,
@@ -37,6 +38,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { FichaPanel } from "@/components/ficha-panel";
 import { DeleteConversationDialog } from "./delete-conversation-dialog";
 import { aplicarLote, nombreCorto, useEquipo } from "@/lib/equipo";
+import { esEtapaActivado, estadoDeChat } from "@/lib/filtros-bandeja";
+import { formatMoneyCents } from "@/lib/money";
+import { ActivarDialog } from "./activar-dialog";
+import { EstadoChip } from "./estado-chip";
 
 
 export function ContactPanel({
@@ -80,6 +85,13 @@ export function ContactPanel({
   const [stages, setStages] = useState<StageDto[]>([]);
   const [currentStageId, setCurrentStageId] = useState<string | null>(null);
   const [leadId, setLeadId] = useState<string | null>(null);
+  // 076 — Monto del trato y diálogo de «Marcar activado».
+  const [leadMonto, setLeadMonto] = useState<{ cents: number | null; currency: string }>({
+    cents: null,
+    currency: "COP",
+  });
+  const [activando, setActivando] = useState(false);
+  const [avisoActivado, setAvisoActivado] = useState<string | null>(null);
   // 018: de qué anuncio llegó; null si escribió por su cuenta.
   const [anuncio, setAnuncio] = useState<AnuncioDto | null>(null);
   // Quién responde: el agente conectado (036: el CRM no trae uno), conectado
@@ -118,6 +130,7 @@ export function ContactPanel({
       setFicha(detail.contact?.ficha ?? {});
       setCurrentStageId(detail.stage?.id ?? null);
       setLeadId(detail.lead?.id ?? null);
+      setLeadMonto({ cents: detail.lead?.amountCents ?? null, currency: detail.lead?.currency ?? "COP" });
       setAnuncio(detail.anuncio ?? null);
     }
     if (stagesRes) setStages(stagesRes.stages);
@@ -138,6 +151,7 @@ export function ContactPanel({
       setFicha(detail.contact?.ficha ?? {});
       setCurrentStageId(detail.stage?.id ?? null);
       setLeadId(detail.lead?.id ?? null);
+      setLeadMonto({ cents: detail.lead?.amountCents ?? null, currency: detail.lead?.currency ?? "COP" });
       // La imagen del creativo se copia después de que entra el mensaje: este
       // refetch en vivo es lo que la hace aparecer sin recargar.
       setAnuncio(detail.anuncio ?? null);
@@ -158,6 +172,11 @@ export function ContactPanel({
 
   async function moveToStage(stageId: string) {
     if (!leadId || stageId === currentStageId) return;
+    // 076 — Activado pide el monto: sin él no hay comisión que calcular.
+    if (esEtapaActivado(stages.find((s) => s.id === stageId)?.name ?? null)) {
+      setActivando(true);
+      return;
+    }
     setCurrentStageId(stageId); // optimista
     await fetch(`/api/pipeline/leads/${leadId}`, {
       method: "PATCH",
@@ -228,6 +247,7 @@ export function ContactPanel({
               <p className="text-xs text-text-3">
                 {formatPhone(conversation.contact.phone)}
               </p>
+              <EstadoChip estado={estadoDeChat(conversation, new Date())} className="mt-1.5" />
             </div>
           </div>
 
@@ -397,6 +417,35 @@ export function ContactPanel({
           {errorLote && <p className="mt-1.5 text-[11px] text-destructive">{errorLote}</p>}
         </section>
 
+        {/* 076 — Activado y monto desde el chat, sin ir al pipeline */}
+        {leadId && (
+          <section className="border-b p-4">
+            <p className="kicker mb-2">Venta</p>
+            {esEtapaActivado(stages.find((s) => s.id === currentStageId)?.name ?? null) ? (
+              <div className="flex items-center justify-between gap-2">
+                <p className="flex items-center gap-1.5 text-[13px] font-semibold text-success-text">
+                  <BadgeCheck className="h-4 w-4" strokeWidth={1.8} />
+                  Activo
+                  {leadMonto.cents !== null && (
+                    <span className="font-normal text-text-2">
+                      · {formatMoneyCents(leadMonto.cents, leadMonto.currency)}
+                    </span>
+                  )}
+                </p>
+                <Button size="sm" variant="ghost" onClick={() => setActivando(true)}>
+                  Editar monto
+                </Button>
+              </div>
+            ) : (
+              <Button size="sm" className="w-full" onClick={() => setActivando(true)}>
+                <BadgeCheck className="h-4 w-4" strokeWidth={1.8} />
+                Marcar activado
+              </Button>
+            )}
+            {avisoActivado && <p className="mt-2 text-xs text-success-text">{avisoActivado}</p>}
+          </section>
+        )}
+
         {/* Stepper de etapa */}
         {stages.length > 0 && leadId && (
           <section className="border-b p-4">
@@ -483,6 +532,22 @@ export function ContactPanel({
           </section>
         )}
       </div>
+
+      {activando && leadId && (
+        <ActivarDialog
+          leadId={leadId}
+          nombre={conversation.contact.name}
+          currency={leadMonto.currency}
+          montoInicialCents={leadMonto.cents}
+          onCancel={() => setActivando(false)}
+          onSaved={(mensaje) => {
+            setActivando(false);
+            setAvisoActivado(mensaje);
+            void refreshLive();
+            onListaCambiada?.();
+          }}
+        />
+      )}
 
       {confirmingDelete && onDeleteConversation && (
         <DeleteConversationDialog

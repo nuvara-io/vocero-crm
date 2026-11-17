@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useRef, useState } from "react";
-import { Check, CheckSquare, Clock3, Hourglass, Inbox, Megaphone, SlidersHorizontal, Search, Sparkles, UserCheck, UserRound, X } from "lucide-react";
+import { Check, CheckSquare, Clock3, Inbox, Megaphone, SlidersHorizontal, Search, Sparkles, UserCheck, UserRound, X } from "lucide-react";
 import type { ConversationDto } from "@/lib/types";
 import { etiquetaDeOrigen, titularDeOrigen } from "@/lib/anuncios";
 import { CHANNEL_LABEL, type Channel } from "@/lib/channels";
@@ -20,6 +20,7 @@ import {
   DIAS_SEGUIMIENTO,
   diasDesde,
   enVista,
+  estadoDeChat,
   etiquetaVence,
   ordenDeGrupo,
   pideSeguimiento,
@@ -29,6 +30,7 @@ import {
 } from "@/lib/filtros-bandeja";
 import { nombreCorto, useEquipo } from "@/lib/equipo";
 import { LoteBar } from "./lote-bar";
+import { EstadoChip } from "./estado-chip";
 
 /* Puntos de etapa: los tokens del tema, no hex copiados del tema claro —
    así siguen al acento white-label y se recalculan en oscuro. */
@@ -694,12 +696,17 @@ export function ConversationList({
                             {nombreCorto(c.assignee.name)}
                           </span>
                         )}
-                        {pideSeguimiento(c, 2, ahora) && (
-                          <span className="inline-flex items-center gap-1 rounded-full border border-border-strong bg-chip px-2 py-0.5 text-[11px] text-text-2">
-                            <Hourglass className="h-3 w-3" strokeWidth={1.8} />
-                            Sin respuesta · {diasDesde(c.lastMessageAt, ahora)} d
-                          </span>
-                        )}
+                        {(() => {
+                          // 076 — El estado en color va primero: es lo que dice qué hacer.
+                          const estado = estadoDeChat(c, ahora);
+                          const dias = diasDesde(c.lastMessageAt, ahora);
+                          return (
+                            <EstadoChip
+                              estado={estado}
+                              detalle={estado === "recontactar" && dias !== null && dias >= 1 ? `${dias} d` : null}
+                            />
+                          );
+                        })()}
                         {c.stageName && (
                           <span className="inline-flex items-center gap-1.5 rounded-full border border-border-strong bg-chip px-2 py-0.5 text-[11px] font-medium text-text-2">
                             <span

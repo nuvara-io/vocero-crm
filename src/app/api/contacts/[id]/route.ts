@@ -44,7 +44,10 @@ export const GET = withAuth(async (session, _req: Request, ctx: Params) => {
           kind: stageRow.stage.kind,
         }
       : null,
-    lead: stageRow ? { id: stageRow.lead.id } : null,
+    // 076 — El monto del lead, para prellenar «Marcar activado».
+    lead: stageRow
+      ? { id: stageRow.lead.id, amountCents: stageRow.lead.amountCents, currency: stageRow.lead.currency }
+      : null,
   });
 });
 

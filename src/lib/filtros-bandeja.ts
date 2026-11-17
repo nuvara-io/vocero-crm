@@ -124,3 +124,59 @@ export function ordenDeGrupo(stageName: string | null): number {
   const j = ETAPAS_DE_CLIENTE.indexOf(k);
   return j >= 0 ? 10 + j : 99;
 }
+
+/**
+ * 076 — El estado del chat en un color, para ver de un vistazo a quién hay que
+ * atender: quién ya está activo, a quién hay que volver a escribirle, quién
+ * está esperando. Se decide en este orden (el primero que aplica gana):
+ *  - Cerrado: perdido o archivado.
+ *  - Activo: etapa «Activado» o «Cliente» (ya paga).
+ *  - Registrado: otra etapa ganada (se registró, todavía no activa).
+ *  - Por contestar: el cliente habló último.
+ *  - Recontactar: le escribimos de último hace 2 días o más, o no asistió.
+ *  - En demo: Demo agendada / Demo hecha / Seguimiento.
+ *  - Esperando: le escribimos hace poco y todavía no contesta.
+ */
+export type EstadoChat =
+  | "cerrado"
+  | "activo"
+  | "registrado"
+  | "por_contestar"
+  | "recontactar"
+  | "en_demo"
+  | "esperando";
+
+export type TonoEstado = "neutral" | "success" | "brand" | "info" | "danger" | "warning";
+
+export const ESTADOS_CHAT: Record<EstadoChat, { label: string; tono: TonoEstado }> = {
+  cerrado: { label: "Cerrado", tono: "neutral" },
+  activo: { label: "Activo", tono: "success" },
+  registrado: { label: "Registrado", tono: "brand" },
+  por_contestar: { label: "Por contestar", tono: "info" },
+  recontactar: { label: "Recontactar", tono: "danger" },
+  en_demo: { label: "En demo", tono: "warning" },
+  esperando: { label: "Esperando", tono: "neutral" },
+};
+
+/** Días sin respuesta a partir de los cuales hay que volver a escribirle. */
+export const DIAS_RECONTACTAR = 2;
+
+const ETAPAS_ACTIVAS = ["activado", "activo", "cliente"];
+
+type ParaEstado = ParaVista & { lastMessageAt: string | null };
+
+export function estadoDeChat(c: ParaEstado, ahora: Date): EstadoChat {
+  if (esCerrado(c)) return "cerrado";
+  const etapa = clave(c.stageName);
+  if (ETAPAS_ACTIVAS.includes(etapa)) return "activo";
+  if (esCliente(c)) return "registrado";
+  if (c.lastDirection === "in") return "por_contestar";
+  if (etapa === "no asistio" || pideSeguimiento(c, DIAS_RECONTACTAR, ahora)) return "recontactar";
+  if (esDemo(c)) return "en_demo";
+  return "esperando";
+}
+
+/** ¿Esta etapa es la de «Activado»? (sin importar tildes ni mayúsculas). */
+export function esEtapaActivado(nombre: string | null): boolean {
+  return ETAPAS_ACTIVAS.includes(clave(nombre));
+}

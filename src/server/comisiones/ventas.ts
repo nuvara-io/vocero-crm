@@ -286,6 +286,9 @@ export type VentaManualInput = {
   montoCents: number;
   pagadoEn: Date;
   nota?: string | null;
+  /** 076 — Si se marcó desde el chat: de qué lead y contacto es la venta. */
+  leadId?: string | null;
+  contactId?: string | null;
 };
 
 /**
@@ -348,6 +351,8 @@ export async function registrarVentaManual(
     origin: "manual",
     customerName: input.cliente.trim(),
     customerEmail: correo,
+    leadId: input.leadId ?? null,
+    contactId: input.contactId ?? null,
     amountCents: input.montoCents,
     currency: "COP",
     paidAt: input.pagadoEn,
