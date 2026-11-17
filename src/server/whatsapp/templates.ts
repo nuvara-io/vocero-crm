@@ -556,6 +556,12 @@ export async function sendTemplate(input: {
     .set({ lastMessageAt: new Date(), updatedAt: new Date() })
     .where(eq(schema.conversation.id, input.conversationId));
 
+  // 081 — La IA no ve las plantillas: su memoria son los mensajes del lead y
+  // sus propias respuestas. Si contestara al «sí» de un recordatorio o de un
+  // seguimiento, lo haría sin saber a qué le dicen que sí. Se pausa y la
+  // respuesta le llega a una persona. Solo si nadie la había tomado ya.
+  await pausarIaPorPlantilla(input.conversationId);
+
   // 072 — El primer mensaje a un prospecto cuenta para el tope diario.
   if (row.contact.prospectList && !row.contact.firstContactAt) {
     await db
@@ -573,6 +579,30 @@ export async function sendTemplate(input: {
   });
 
   return { messageId: message.id };
+}
+
+/**
+ * 081 — Pausa la IA de una conversación porque le salió una plantilla.
+ * Idempotente: si ya había una persona al frente, no toca el motivo.
+ */
+export async function pausarIaPorPlantilla(conversationId: string): Promise<boolean> {
+  const pausadas = await getDb()
+    .update(schema.conversation)
+    .set({
+      aiEnabled: false,
+      handoffAt: new Date(),
+      handoffReason: "plantilla",
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(schema.conversation.id, conversationId),
+        eq(schema.conversation.aiEnabled, true),
+        sql`${schema.conversation.handoffAt} is null`
+      )
+    )
+    .returning({ id: schema.conversation.id });
+  return pausadas.length > 0;
 }
 
 /** 072 — Prospectos que recibieron su primer mensaje hoy (zona del negocio). */

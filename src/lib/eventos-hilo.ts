@@ -22,6 +22,7 @@ export const HANDOFF_LABELS: Record<string, string> = {
   ventana: "Ventana de 24h cerrada",
   hostilidad: "El cliente se puso agresivo y el agente se retiró",
   manual_reply: "Respondiste desde el teléfono — IA en pausa",
+  plantilla: "Se envió una plantilla — IA en pausa para que responda una persona",
 };
 
 /** D1 — «Pasó a Interesado · por Ana», «Entró al embudo en Nuevo»… */

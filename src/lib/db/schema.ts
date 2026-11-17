@@ -443,6 +443,8 @@ export const conversation = pgTable(
         "ventana",
         "hostilidad",
         "manual_reply",
+        // 081: salió una plantilla y la IA no tiene ese mensaje en su memoria.
+        "plantilla",
       ],
     }),
     lastInboundAt: timestamp("last_inbound_at"),
