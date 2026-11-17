@@ -1,11 +1,9 @@
-import { asc, eq } from "drizzle-orm";
 import { z } from "zod";
-import { getDb, schema } from "@/lib/db";
-import { scoped } from "@/lib/db/tenant";
 import { apiError, parseBody, withAuth } from "@/lib/api";
 import {
   archivar,
   asignar,
+  descartarNoPerfil,
   MAX_LOTE,
   moverDeEtapa,
   resolverDestinos,
@@ -76,24 +74,9 @@ export const POST = withAuth(async (session, req: Request) => {
       return Response.json({ ok: true, cambiados: res.cambiados });
     }
     case "no_es_perfil": {
-      const [perdida] = await getDb()
-        .select({ id: schema.pipelineStage.id })
-        .from(schema.pipelineStage)
-        .where(
-          scoped(schema.pipelineStage.organizationId, session.organizationId, eq(schema.pipelineStage.kind, "lost"))
-        )
-        .orderBy(asc(schema.pipelineStage.position))
-        .limit(1);
-      if (!perdida) return apiError(422, "invalid_stage", "No hay una etapa de perdidos en el tablero");
-      const res = await moverDeEtapa(session.organizationId, destinos, {
-        stageId: perdida.id,
-        actorUserId: session.userId,
-        lossReason: "no_es_perfil",
-        lossNote: null,
-      });
-      if (!res.ok) return apiError(422, "invalid_stage", "No se pudo mover a perdidos");
-      const archivados = await archivar(session.organizationId, destinos, true);
-      return Response.json({ ok: true, cambiados: archivados, movidos: res.movidos });
+      const res = await descartarNoPerfil(session.organizationId, destinos, { actorUserId: session.userId });
+      if (!res.ok) return apiError(422, "invalid_stage", "No hay una etapa de perdidos en el tablero");
+      return Response.json({ ok: true, cambiados: res.archivados, movidos: res.movidos });
     }
     case "etapa": {
       const res = await moverDeEtapa(session.organizationId, destinos, {

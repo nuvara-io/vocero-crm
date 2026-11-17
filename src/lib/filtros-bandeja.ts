@@ -60,7 +60,15 @@ export function diasDesde(iso: string | null, ahora: Date): number | null {
  * «Por contestar» se cruza con «En demo» y «Clientes» a propósito: lo urgente
  * se ve junto, sin importar la etapa.
  */
-export type VistaBandeja = "todas" | "por_contestar" | "esperando" | "demo" | "clientes" | "cerrados";
+export type VistaBandeja =
+  | "todas"
+  | "por_contestar"
+  | "esperando"
+  | "demo"
+  | "clientes"
+  | "cerrados"
+  /** 078 — Chats que el filtro cree fuera de perfil, para decidir de una. */
+  | "revisar_perfil";
 
 export const VISTAS_BANDEJA: { id: VistaBandeja; label: string }[] = [
   { id: "todas", label: "Todas" },
@@ -69,6 +77,7 @@ export const VISTAS_BANDEJA: { id: VistaBandeja; label: string }[] = [
   { id: "demo", label: "En demo" },
   { id: "clientes", label: "Clientes" },
   { id: "cerrados", label: "Cerrados" },
+  { id: "revisar_perfil", label: "¿Fuera de perfil?" },
 ];
 
 type ParaVista = {
@@ -76,6 +85,8 @@ type ParaVista = {
   stageKind: "open" | "won" | "lost" | null;
   stageName: string | null;
   archivedAt: string | null;
+  /** 078 */
+  perfil?: { estado: "sospecha" | "fuera" | "ok" | null; motivo: string | null } | null;
 };
 
 const clave = (s: string | null) =>
@@ -113,6 +124,8 @@ export function enVista(c: ParaVista, vista: VistaBandeja): boolean {
       return esDemo(c);
     case "clientes":
       return esCliente(c);
+    case "revisar_perfil":
+      return !esCerrado(c) && c.perfil?.estado === "sospecha";
   }
 }
 

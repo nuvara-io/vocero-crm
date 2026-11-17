@@ -1,3 +1,4 @@
+import { iniciarSyncGoogle } from "@/server/agenda/google-externos";
 import { iniciarRecordatorios } from "@/server/agenda/recordatorio";
 import { eq } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
@@ -136,6 +137,8 @@ export function resumeSeguimiento(): void {
   iniciarSeguimiento();
   // 077 — Recordatorio de la demo N minutos antes (si está encendido).
   iniciarRecordatorios();
+  // 079 — Lo que se mueve o borra en Google Calendar vuelve al CRM.
+  iniciarSyncGoogle();
   // 073 — «Demo hecha», «No asistió» y «Seguimiento» visibles desde el arranque.
   void asegurarEtapasDeDemoEnTodas().catch(() => {});
 }

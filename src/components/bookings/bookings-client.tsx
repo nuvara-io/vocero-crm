@@ -215,6 +215,8 @@ export function BookingsClient({
     : null;
 
   function select(b: Booking) {
+    // 079 — Lo ocupado en Google se ve pero se edita en Google.
+    if (b.id.startsWith("gcal:")) return;
     setSelectedId(b.id);
     setSnapshot(b);
   }
@@ -482,7 +484,7 @@ function StatusBar({
       </span>
       <span className="hidden xl:inline">
         Hora del negocio ({timezone})
-        {counts.google && " · Los cambios hechos en Google Calendar no se importan"}
+        {counts.google && " · Sincronizado con Google Calendar en los dos sentidos (cada 5 min)"}
       </span>
       <Legend />
       <div className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-1.5">

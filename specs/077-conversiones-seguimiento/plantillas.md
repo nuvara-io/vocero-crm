@@ -21,3 +21,9 @@ Hola {{1}}, vi que ya creaste tu cuenta en núvara. Si tienes causaciones acumul
 ## Para revisar aparte
 
 - `confirmacion_demostracion` (aprobada) dice «si tienes a mano el RUT de una empresa y el correo… la hacemos con tus casos reales». Desde el 17-nov la demo se hace solo en la cuenta demo: conviene una versión nueva sin esa frase.
+
+## confirmacion_demostracion_v2 — UTILITY — reemplaza a confirmacion_demostracion (BORRADOR)
+
+Hola {{1}}, quedó agendada tu demostración en vivo de núvara el {{2}} a las {{3}} por Google Meet. Entra por este enlace: {{4}} . Dura unos 30 minutos y la hacemos en una cuenta de prueba, así que no necesitas preparar nada. Si quieres, cuéntame cuántas empresas llevas y qué programa contable usas. Si necesitas cambiar la hora, responde a este mensaje.
+
+> Cuando Meta la apruebe, ocultar `confirmacion_demostracion` (dice «trae el RUT… con tus casos reales»).

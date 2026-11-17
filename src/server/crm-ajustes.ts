@@ -11,6 +11,7 @@ import {
   type ReglaResponsable,
   type SecuenciaEtapa,
 } from "@/lib/crm-reglas";
+import type { ModoFiltroPerfil } from "@/lib/perfil";
 
 /**
  * 071 — Ajustes del CRM que no merecen tabla propia: viven en
@@ -28,6 +29,8 @@ export type AjustesCrm = {
   noAsistio: AjustesNoAsistio;
   /** 077 — Recordatorio automático N minutos antes de la demo. */
   recordatorio: AjustesRecordatorio;
+  /** 078 — Filtro de leads fuera de perfil (préstamos, empleo…). */
+  filtroPerfil: { modo: ModoFiltroPerfil };
 };
 
 export type { AjustesNoAsistio };
@@ -47,6 +50,7 @@ export const AJUSTES_CRM_POR_DEFECTO: AjustesCrm = {
   valorDemoCents: null,
   noAsistio: NO_ASISTIO_POR_DEFECTO,
   recordatorio: RECORDATORIO_POR_DEFECTO,
+  filtroPerfil: { modo: "apagado" },
 };
 
 function parse(metadata: string | null): Record<string, unknown> {
@@ -77,7 +81,13 @@ export function normalizar(raw: unknown): AjustesCrm {
       Number.isFinite(r.valorDemoCents) && Number(r.valorDemoCents) > 0 ? Math.round(Number(r.valorDemoCents)) : null,
     noAsistio: normalizarNoAsistio(r.noAsistio),
     recordatorio: normalizarRecordatorio(r.recordatorio),
+    filtroPerfil: normalizarFiltroPerfil(r.filtroPerfil),
   };
+}
+
+function normalizarFiltroPerfil(raw: unknown): { modo: ModoFiltroPerfil } {
+  const m = (typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>).modo : null) as unknown;
+  return { modo: m === "marcar" || m === "automatico" ? m : "apagado" };
 }
 
 function normalizarRecordatorio(raw: unknown): AjustesRecordatorio {

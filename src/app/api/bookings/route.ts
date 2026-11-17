@@ -2,7 +2,7 @@ import { z } from "zod";
 import { apiError, parseBody, withAuth } from "@/lib/api";
 import { parseRangeQuery } from "@/lib/time/calendar";
 import { agendaDisabledResponse, agendaEnabled } from "@/server/agenda/flag";
-import { listBookings, listBookingsInRange } from "@/server/agenda/queries";
+import { bloquesDeGoogle, listBookings, listBookingsInRange } from "@/server/agenda/queries";
 import { getSettings } from "@/server/agenda/settings";
 import { createBlock, createSessionBooking } from "@/server/agenda/service";
 import { bookingErrorResponse, bookingPayload } from "@/server/agenda/http";
@@ -36,8 +36,10 @@ export const GET = withAuth(async (session, req: Request) => {
     query.range,
     settings
   );
+  // 079 — Lo agendado directo en Google, como bloqueos de solo lectura.
+  const deGoogle = await bloquesDeGoogle(session.organizationId, query.range, settings.timezone);
   return Response.json({
-    bookings,
+    bookings: deGoogle.length ? [...bookings, ...deGoogle].sort((a, b) => a.scheduledAtUtc.localeCompare(b.scheduledAtUtc)) : bookings,
     timezone: settings.timezone,
     weeklyHours: settings.weeklyHours,
     range: query.range,

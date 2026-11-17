@@ -21,6 +21,7 @@ import {
   diasDesde,
   enVista,
   estadoDeChat,
+  ESTADOS_CHAT,
   etiquetaVence,
   ordenDeGrupo,
   pideSeguimiento,
@@ -31,6 +32,14 @@ import {
 import { nombreCorto, useEquipo } from "@/lib/equipo";
 import { LoteBar } from "./lote-bar";
 import { EstadoChip } from "./estado-chip";
+import { MOTIVO_PERFIL_LABEL, type MotivoPerfil } from "@/lib/perfil";
+
+const sinTildesMin = (t: string) =>
+  t
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
 
 /* Puntos de etapa: los tokens del tema, no hex copiados del tema claro —
    así siguen al acento white-label y se recalculan en oscuro. */
@@ -237,7 +246,9 @@ export function ConversationList({
     ? [...enLaVista(vista)].sort((a, b) => ordenDeGrupo(a.stageName) - ordenDeGrupo(b.stageName))
     : enLaVista(vista);
   visibleRef.current = visible.map((c) => c.id);
-  const pestanas = VISTAS_BANDEJA.map((v) => ({ id: v.id, label: v.label, count: enLaVista(v.id).length }));
+  const pestanas = VISTAS_BANDEJA.map((v) => ({ id: v.id, label: v.label, count: enLaVista(v.id).length }))
+    // 078 — «¿Fuera de perfil?» solo aparece cuando hay algo que revisar.
+    .filter((p) => p.id !== "revisar_perfil" || p.count > 0 || vista === "revisar_perfil");
   const nombreResponsable =
     responsable === "none"
       ? "Sin responsable"
@@ -707,7 +718,20 @@ export function ConversationList({
                             />
                           );
                         })()}
-                        {c.stageName && (
+                        {c.perfil?.estado === "sospecha" && (
+                          <span
+                            className="inline-flex items-center gap-1 rounded-full border border-warning-soft bg-warning-tint px-2 py-0.5 text-[11px] font-medium text-warning-text"
+                            title="El filtro cree que no busca un software contable. Revísalo en el chat."
+                          >
+                            ¿Fuera de perfil?
+                            {c.perfil.motivo && MOTIVO_PERFIL_LABEL[c.perfil.motivo as MotivoPerfil]
+                              ? ` · ${MOTIVO_PERFIL_LABEL[c.perfil.motivo as MotivoPerfil]}`
+                              : ""}
+                          </span>
+                        )}
+                        {c.stageName &&
+                          // Sin «Registrado · Registrado»: si el estado ya lo dice, la etapa sobra.
+                          sinTildesMin(c.stageName) !== sinTildesMin(ESTADOS_CHAT[estadoDeChat(c, ahora)].label) && (
                           <span className="inline-flex items-center gap-1.5 rounded-full border border-border-strong bg-chip px-2 py-0.5 text-[11px] font-medium text-text-2">
                             <span
                               className="h-[7px] w-[7px] rounded-full"

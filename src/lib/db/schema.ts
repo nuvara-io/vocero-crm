@@ -221,6 +221,14 @@ export const contact = pgTable(
      */
     aiPaused: boolean("ai_paused").notNull().default(false),
     archivedAt: timestamp("archived_at"),
+    /**
+     * 078 — Filtro de perfil: `sospecha` (la IA cree que no es cliente: pide
+     * préstamo, empleo…), `fuera` (confirmado: no es perfil) u `ok` (una
+     * persona dijo que sí es perfil; no se vuelve a revisar).
+     */
+    perfilEstado: text("perfil_estado", { enum: ["sospecha", "fuera", "ok"] }),
+    perfilMotivo: text("perfil_motivo"),
+    perfilRevisadoAt: timestamp("perfil_revisado_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },

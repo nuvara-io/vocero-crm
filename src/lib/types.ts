@@ -46,6 +46,8 @@ export type ConversationDto = {
   assignee: { id: string; name: string } | null;
   /** 067 — Quién habló último: `out` = esperamos respuesta del cliente. */
   lastDirection: "in" | "out" | null;
+  /** 078 — Filtro de perfil: `sospecha` = la IA cree que no es cliente. */
+  perfil: { estado: "sospecha" | "fuera" | "ok" | null; motivo: string | null } | null;
 };
 
 /** 018 — De qué anuncio llegó un contacto, como lo ve la bandeja. */

@@ -91,6 +91,32 @@ export async function GET(req: Request, ctx: Ctx) {
     return Response.json({ id: path[1], summary: "Calendario de prueba" });
   }
 
+  // 079 — GET /calendars/{id}/events: la lista del rango, con los borrados
+  // como `cancelled` (lo que devuelve Google con showDeleted=true).
+  if (path[0] === "calendars" && path[2] === "events" && path.length === 3) {
+    const url = new URL(req.url);
+    const desde = Date.parse(url.searchParams.get("timeMin") ?? "") || 0;
+    const hasta = Date.parse(url.searchParams.get("timeMax") ?? "") || Number.MAX_SAFE_INTEGER;
+    const state = googleMockState();
+    const items = [...state.events.values()]
+      .filter((e) => {
+        const ini = Date.parse(e.start);
+        return Number.isFinite(ini) && ini < hasta && Date.parse(e.end) > desde;
+      })
+      .map((e) => ({
+        id: e.id,
+        summary: e.summary,
+        status: "confirmed",
+        start: { dateTime: e.start },
+        end: { dateTime: e.end },
+      }));
+    const borrados =
+      url.searchParams.get("showDeleted") === "true"
+        ? state.deleted.map((id) => ({ id, status: "cancelled" }))
+        : [];
+    return Response.json({ items: [...items, ...borrados] });
+  }
+
   // GET /calendars/{id}/events/{eventId}
   const event = eventFrom(path);
   if (!event) return new Response(null, { status: 404 });

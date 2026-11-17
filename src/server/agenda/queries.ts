@@ -1,3 +1,4 @@
+import { ocupadoEnGoogle } from "@/server/agenda/google-externos";
 import { asc, desc, eq, gte, lt } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { scoped } from "@/lib/db/tenant";
@@ -139,4 +140,42 @@ function toListItem(r: Row, timezone: string): BookingListItem {
     isTest: r.booking.isTest,
     notes: r.booking.notes,
   };
+}
+
+/** 079 — Marca de los bloques que vienen de Google: solo lectura en la UI. */
+export const CONECTOR_GOOGLE_EXTERNO = "google-externo";
+
+/**
+ * 079 — Lo ocupado en Google Calendar como bloqueos del calendario del CRM.
+ * Id con prefijo `gcal:` para que nada lo confunda con una cita propia.
+ */
+export async function bloquesDeGoogle(
+  organizationId: string,
+  range: DateRange,
+  timezone: string
+): Promise<BookingListItem[]> {
+  const start = zonedWallClockToUtc(range.from, "00:00", timezone)!;
+  const end = zonedWallClockToUtc(addDaysISO(range.to, 1), "00:00", timezone)!;
+  const eventos = await ocupadoEnGoogle(organizationId, start, end).catch(() => []);
+  return eventos.map((e) => {
+    const parts = partsInTz(e.inicio, timezone);
+    return {
+      id: `gcal:${e.id}`,
+      kind: "block" as const,
+      status: "agendada" as const,
+      source: "manual" as const,
+      scheduledAtUtc: e.inicio,
+      durationMinutes: Math.max(5, Math.round((Date.parse(e.fin) - Date.parse(e.inicio)) / 60_000)),
+      date: parts.date,
+      time: parts.time,
+      weekday: parts.weekday,
+      contact: null,
+      conversationId: null,
+      connector: CONECTOR_GOOGLE_EXTERNO,
+      meetingLink: null,
+      linkPending: false,
+      isTest: false,
+      notes: e.titulo ? `Ocupado (Google) · ${e.titulo}` : "Ocupado (Google)",
+    };
+  });
 }

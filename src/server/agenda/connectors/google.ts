@@ -281,3 +281,85 @@ export const googleConnector: AgendaConnector<GoogleCreds> = {
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+
+/* ------------------------------------------------------------------ *
+ * 079 — Google → CRM: leer el calendario del dueño
+ * ------------------------------------------------------------------ */
+
+/** Un evento del calendario de Google, ya resuelto a lo que el CRM necesita. */
+export type EventoGoogle = {
+  id: string;
+  titulo: string | null;
+  /** UTC. En un evento de día completo, la medianoche del día (zona del negocio no aplica). */
+  inicio: string;
+  fin: string;
+  diaCompleto: boolean;
+  /** `transparent` = Google lo marca «disponible»: no bloquea. */
+  libre: boolean;
+  cancelado: boolean;
+};
+
+type EventoCrudo = {
+  id?: string;
+  summary?: string;
+  status?: string;
+  transparency?: string;
+  start?: { dateTime?: string; date?: string };
+  end?: { dateTime?: string; date?: string };
+};
+
+/** Pura y exportada para probarla sin Google. */
+export function eventoDeGoogle(e: EventoCrudo): EventoGoogle | null {
+  if (!e.id) return null;
+  const diaCompleto = Boolean(e.start?.date && !e.start?.dateTime);
+  const inicio = e.start?.dateTime ?? (e.start?.date ? `${e.start.date}T00:00:00Z` : null);
+  const fin = e.end?.dateTime ?? (e.end?.date ? `${e.end.date}T00:00:00Z` : null);
+  if (!inicio || !fin) {
+    // Los cancelados de `showDeleted` pueden venir sin fechas: igual sirven.
+    if (e.status !== "cancelled") return null;
+  }
+  return {
+    id: e.id,
+    titulo: e.summary ?? null,
+    inicio: inicio ? new Date(inicio).toISOString() : "",
+    fin: fin ? new Date(fin).toISOString() : "",
+    diaCompleto,
+    libre: e.transparency === "transparent",
+    cancelado: e.status === "cancelled",
+  };
+}
+
+/**
+ * Los eventos del calendario conectado en un rango (incluye cancelados, para
+ * saber cuándo el dueño borró en Google una cita creada por el CRM). Usa el
+ * mismo permiso `calendar.events` que ya se tiene: no hay que reconectar.
+ */
+export async function listarEventosGoogle(
+  creds: GoogleCreds,
+  desde: Date,
+  hasta: Date
+): Promise<EventoGoogle[]> {
+  const out: EventoGoogle[] = [];
+  let pageToken: string | undefined;
+  for (let pagina = 0; pagina < 4; pagina++) {
+    const q = new URLSearchParams({
+      timeMin: desde.toISOString(),
+      timeMax: hasta.toISOString(),
+      singleEvents: "true",
+      showDeleted: "true",
+      maxResults: "250",
+      ...(pageToken ? { pageToken } : {}),
+    });
+    const data = (await googleFetch(creds, `${eventsPath(creds)}?${q}`)) as {
+      items?: EventoCrudo[];
+      nextPageToken?: string;
+    } | null;
+    for (const e of data?.items ?? []) {
+      const ev = eventoDeGoogle(e);
+      if (ev) out.push(ev);
+    }
+    pageToken = data?.nextPageToken;
+    if (!pageToken) break;
+  }
+  return out;
+}

@@ -1,6 +1,7 @@
 "use client";
 
 import { HANDOFF_LABELS } from "@/lib/eventos-hilo";
+import { MOTIVO_PERFIL_LABEL, type MotivoPerfil } from "@/lib/perfil";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
@@ -358,6 +359,43 @@ export function ContactPanel({
             </div>
           )}
         </section>
+
+        {/* 078 — El filtro cree que no es cliente: decide con un clic. */}
+        {conversation.perfil?.estado === "sospecha" && !conversation.archivedAt && (
+          <section className="border-b bg-warning-tint p-4">
+            <p className="text-[13px] font-semibold text-warning-text">¿Fuera de perfil?</p>
+            <p className="mt-0.5 text-[12px] text-text-2">
+              {conversation.perfil.motivo && MOTIVO_PERFIL_LABEL[conversation.perfil.motivo as MotivoPerfil]
+                ? `${MOTIVO_PERFIL_LABEL[conversation.perfil.motivo as MotivoPerfil]}, según sus primeros mensajes.`
+                : "Sus primeros mensajes no parecen de alguien que busque un software contable."}
+            </p>
+            <div className="mt-2.5 flex gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                className="flex-1 text-danger-text hover:text-danger-text"
+                disabled={aplicando}
+                onClick={() => void lote({ accion: "no_es_perfil" })}
+              >
+                <UserX className="h-4 w-4" strokeWidth={1.7} />
+                No es perfil
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="flex-1"
+                disabled={aplicando}
+                onClick={async () => {
+                  await fetch(`/api/contacts/${conversation.contact.id}/perfil`, { method: "POST" }).catch(() => null);
+                  onListaCambiada?.();
+                }}
+              >
+                <Check className="h-4 w-4" strokeWidth={1.7} />
+                Sí es perfil
+              </Button>
+            </div>
+          </section>
+        )}
 
         {/* 067 — Quién lleva este lead (demostración, cierre, seguimiento) y
             archivarlo cuando ya no hay nada que hacer en la Bandeja. */}

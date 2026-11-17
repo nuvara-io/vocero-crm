@@ -1,3 +1,4 @@
+import { revisarPerfil } from "@/server/perfil/revisar";
 import { and, eq, sql } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
@@ -556,6 +557,10 @@ export async function ingestInboundMessage(input: {
   });
   // 072 — Un prospecto que responde: baja si la pide, o pasa a conversación.
   await alRecibirDeProspecto(organizationId, contact.id, input.text);
+  // 078 — ¿Pide un préstamo o empleo? En segundo plano: no frena la ingesta.
+  if (input.text) {
+    void revisarPerfil({ organizationId, conversationId: conversation.id, contactId: contact.id });
+  }
 
   publish(organizationId, {
     type: "message.new",

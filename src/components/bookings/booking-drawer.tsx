@@ -190,7 +190,7 @@ export function BookingDrawer({
               )}
               {b.connector === "google" && (
                 <p className="text-xs text-text-3">
-                  Mueve y cancela desde Vocero: los cambios hechos en Google Calendar no se importan.
+                  Si la mueves o la borras en Google Calendar, aquí se actualiza en unos minutos.
                 </p>
               )}
               {b.notes && isSession && (

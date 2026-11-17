@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { scoped } from "@/lib/db/tenant";
 import type { LossReason } from "@/lib/types";
@@ -17,7 +17,7 @@ import { moveLeadToStage } from "@/server/leads/stage-history";
 
 export const MAX_LOTE = 200;
 
-type Destino = { conversationId: string; contactId: string; leadId: string | null };
+export type Destino = { conversationId: string; contactId: string; leadId: string | null };
 
 /** Conversaciones reales (no del Laboratorio) de la organización, con su lead. */
 export async function resolverDestinos(
@@ -166,4 +166,50 @@ export async function moverDeEtapa(
   }
   avisar(organizationId, destinos);
   return { ok: true, movidos, omitidos };
+}
+
+/**
+ * 077/078 — «No es perfil»: Perdido con ese motivo, archivado y marcado para
+ * que el filtro no lo vuelva a revisar. Lo usan el botón y el filtro automático.
+ */
+export async function descartarNoPerfil(
+  organizationId: string,
+  destinos: readonly Destino[],
+  input: { actorUserId: string | null; motivo?: string | null }
+): Promise<{ ok: true; movidos: number; archivados: number } | { ok: false; motivo: "sin_etapa_perdida" }> {
+  const db = getDb();
+  const [perdida] = await db
+    .select({ id: schema.pipelineStage.id })
+    .from(schema.pipelineStage)
+    .where(scoped(schema.pipelineStage.organizationId, organizationId, eq(schema.pipelineStage.kind, "lost")))
+    .orderBy(asc(schema.pipelineStage.position))
+    .limit(1);
+  if (!perdida) return { ok: false, motivo: "sin_etapa_perdida" };
+  const res = await moverDeEtapa(organizationId, destinos, {
+    stageId: perdida.id,
+    actorUserId: input.actorUserId,
+    lossReason: "no_es_perfil",
+    lossNote: input.motivo ?? null,
+  });
+  const archivados = await archivar(organizationId, destinos, true);
+  if (destinos.length > 0) {
+    await db
+      .update(schema.contact)
+      .set({
+        perfilEstado: "fuera",
+        ...(input.motivo ? { perfilMotivo: input.motivo } : {}),
+        perfilRevisadoAt: new Date(),
+      })
+      .where(
+        scoped(
+          schema.contact.organizationId,
+          organizationId,
+          inArray(
+            schema.contact.id,
+            destinos.map((d) => d.contactId)
+          )
+        )
+      );
+  }
+  return { ok: true, movidos: res.ok ? res.movidos : 0, archivados };
 }

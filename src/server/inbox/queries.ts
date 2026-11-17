@@ -244,6 +244,8 @@ export function serializeConversation(
     anuncio,
     // 067
     archivedAt: contact.archivedAt?.toISOString() ?? null,
+    // 078
+    perfil: contact.perfilEstado ? { estado: contact.perfilEstado, motivo: contact.perfilMotivo } : null,
     ...lista,
   };
 }

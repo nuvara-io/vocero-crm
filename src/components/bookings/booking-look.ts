@@ -13,6 +13,7 @@ export const STATUS_LABEL: Record<Booking["status"], string> = {
 
 /** Un bloqueo no se "agenda" ni se "cancela": está activo o se quitó. */
 export function statusLabel(b: Booking): string {
+  if (b.id.startsWith("gcal:")) return "En Google";
   if (b.kind === "block") return b.status === "cancelada" ? "Quitado" : "Activo";
   return STATUS_LABEL[b.status];
 }
@@ -34,6 +35,10 @@ export function bookingTone(b: Booking): { box: string; dot: string } {
       box: "border-dashed border-border-strong bg-subtle text-text-3 line-through",
       dot: "bg-text-4",
     };
+  }
+  if (b.id.startsWith("gcal:")) {
+    // 079 — Ocupado en Google: gris liso, se distingue de un bloqueo propio.
+    return { box: "border-border-strong bg-subtle text-text-2", dot: "bg-text-3" };
   }
   if (b.kind === "block") {
     return { box: "booking-hatch border-border-strong text-text-2", dot: "bg-text-3" };

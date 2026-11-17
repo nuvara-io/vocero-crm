@@ -16,6 +16,7 @@ import type {
   SecuenciaEtapa,
 } from "@/lib/crm-reglas";
 import { SeguimientoEtapas, secuenciasRecomendadas } from "@/components/settings/seguimiento-etapas";
+import type { ModoFiltroPerfil } from "@/lib/perfil";
 import { cn } from "@/lib/utils";
 
 type Datos = {
@@ -26,6 +27,7 @@ type Datos = {
     valorDemoCents?: number | null;
     noAsistio?: AjustesNoAsistio;
     recordatorio?: AjustesRecordatorio;
+    filtroPerfil?: { modo: ModoFiltroPerfil };
   };
   equipo: { userId: string; name: string }[];
   plantillas: { id: string; name: string; body: string }[];
@@ -75,6 +77,7 @@ export function SeguimientoClient() {
   return (
     <div className="max-w-2xl space-y-6">
       <Reparto datos={datos} onGuardado={cargar} />
+      <FiltroPerfil datos={datos} onGuardado={cargar} />
       <Seguimiento datos={datos} onGuardado={cargar} />
       <Seguimiento datos={datos} onGuardado={cargar} clave="prospeccion" />
       <Demos datos={datos} onGuardado={cargar} />
@@ -550,6 +553,96 @@ function Demos({ datos, onGuardado }: { datos: Datos; onGuardado: () => Promise<
         <div className="flex items-center gap-3">
           <Button size="sm" onClick={() => void enviar()}>
             Guardar
+          </Button>
+          {estado && <span className="text-xs text-text-3">{estado}</span>}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+const MODOS_PERFIL: { id: ModoFiltroPerfil; titulo: string; detalle: string }[] = [
+  { id: "apagado", titulo: "Apagado", detalle: "No revisa nada." },
+  {
+    id: "marcar",
+    titulo: "Marcar para revisar",
+    detalle: "Pone «¿Fuera de perfil?» en el chat y tú decides con un clic.",
+  },
+  {
+    id: "automatico",
+    titulo: "Descartar solo si está muy seguro",
+    detalle: "Si la IA está muy segura, lo pasa a Perdido «No era el perfil» y lo archiva; si duda, solo lo marca.",
+  },
+];
+
+/**
+ * 078 — Filtro de leads fuera de perfil (préstamos, empleo, spam). Primero
+ * busca palabras; solo si hay pista le pregunta a la IA de Ajustes → IA.
+ */
+function FiltroPerfil({ datos, onGuardado }: { datos: Datos; onGuardado: () => Promise<void> }) {
+  const [modo, setModo] = useState<ModoFiltroPerfil>(datos.ajustes.filtroPerfil?.modo ?? "apagado");
+  const [estado, setEstado] = useState<string | null>(null);
+  const [revisando, setRevisando] = useState(false);
+
+  async function enviar() {
+    const e = await guardar({ filtroPerfil: { modo } });
+    setEstado(e ?? "Guardado.");
+    if (!e) await onGuardado();
+  }
+
+  async function revisarAbiertos() {
+    setRevisando(true);
+    setEstado("Revisando los chats abiertos…");
+    const res = await fetch("/api/perfil/revisar", { method: "POST" }).catch(() => null);
+    setRevisando(false);
+    const d = (await res?.json().catch(() => null)) as
+      | { resumen?: Record<string, number>; error?: { message?: string } }
+      | null;
+    if (!res?.ok || !d?.resumen) return setEstado(d?.error?.message ?? "No se pudo revisar");
+    const r = d.resumen;
+    setEstado(
+      `Listo: ${r.marcado ?? 0} marcados para revisar, ${r.descartado ?? 0} descartados y ${
+        (r.perfil_ok ?? 0) + (r.sin_pista ?? 0)
+      } sin señales.`
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Leads fuera de perfil</CardTitle>
+        <CardDescription>
+          Detecta a quien escribe buscando un préstamo, empleo u otra cosa que no es núvara. Mira solo los primeros
+          mensajes y nunca toca a quien marcaste «Sí es perfil». Los audios sin texto no se revisan.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {MODOS_PERFIL.map((m) => (
+          <label key={m.id} className="flex items-start gap-2 text-sm">
+            <input
+              type="radio"
+              name="filtro-perfil"
+              className="mt-1"
+              checked={modo === m.id}
+              onChange={() => setModo(m.id)}
+            />
+            <span>
+              <span className="font-semibold">{m.titulo}</span>
+              <span className="block text-xs text-text-3">{m.detalle}</span>
+            </span>
+          </label>
+        ))}
+        <div className="flex flex-wrap items-center gap-3">
+          <Button size="sm" onClick={() => void enviar()}>
+            Guardar
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={revisando || datos.ajustes.filtroPerfil?.modo === "apagado" || !datos.ajustes.filtroPerfil}
+            onClick={() => void revisarAbiertos()}
+          >
+            {revisando ? "Revisando…" : "Revisar chats abiertos"}
           </Button>
           {estado && <span className="text-xs text-text-3">{estado}</span>}
         </div>

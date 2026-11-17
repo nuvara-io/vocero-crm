@@ -1,3 +1,4 @@
+import { ocupadoEnGoogle } from "@/server/agenda/google-externos";
 import { and, eq, gte, inArray, lte } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { scoped } from "@/lib/db/tenant";
@@ -178,7 +179,7 @@ async function getBusyIntervals(
       )
     );
 
-  return rows
+  const propias = rows
     .filter((r) => r.id !== input.excludeBookingId)
     .map((r) => ({
       startUtc: r.scheduledAt.toISOString(),
@@ -186,4 +187,7 @@ async function getBusyIntervals(
         r.scheduledAt.getTime() + r.durationMinutes * 60_000
       ).toISOString(),
     }));
+  // 079 — Lo que el dueño agendó directo en Google también ocupa.
+  const google = await ocupadoEnGoogle(organizationId, input.fromUtc, input.toUtc).catch(() => []);
+  return [...propias, ...google.map((e) => ({ startUtc: e.inicio, endUtc: e.fin }))];
 }

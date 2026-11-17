@@ -71,6 +71,8 @@ const putSchema = z.object({
   prospeccion: seguimientoSchema.optional(),
   /** 073 — valor por defecto al entrar a Demo agendada (centavos); null = sin valor. */
   valorDemoCents: z.number().int().min(0).max(1_000_000_000_00).nullable().optional(),
+  /** 078 — filtro de leads fuera de perfil. */
+  filtroPerfil: z.object({ modo: z.enum(["apagado", "marcar", "automatico"]) }).optional(),
   /** 077 — recordatorio automático antes de la demo. */
   recordatorio: z
     .object({

@@ -239,6 +239,13 @@
       "when": 1794927687967,
       "tag": "0033_capi_demo_stage",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1794933941023,
+      "tag": "0034_filtro_perfil",
+      "breakpoints": true
     }
   ]
 }
