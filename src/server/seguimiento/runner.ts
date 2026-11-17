@@ -155,6 +155,7 @@ async function tandaDeOrganizacion(organizationId: string, ahora: Date): Promise
       conversationId: schema.followupSend.conversationId,
       step: schema.followupSend.step,
       anchorAt: schema.followupSend.anchorAt,
+      createdAt: schema.followupSend.createdAt,
     })
     .from(schema.followupSend)
     .where(
@@ -187,11 +188,16 @@ async function tandaDeOrganizacion(organizationId: string, ahora: Date): Promise
     const entro = c.entroEtapa ? new Date(c.entroEtapa) : null;
     const ancla = sec.modo === "etapa" && entro && entro > base ? entro : base;
     const dias = Math.floor((ahora.getTime() - ancla.getTime()) / DIA_MS);
+    const delAncla = hechos.filter(
+      (h) => h.conversationId === c.conversationId && h.anchorAt.getTime() === ancla.getTime() && h.step > 0 && h.step < 100
+    );
     const pasosHechos = new Set(
       hechos
         .filter((h) => h.conversationId === c.conversationId && h.anchorAt.getTime() === ancla.getTime())
         .map((h) => h.step)
     );
+    const ultimoEnvio = delAncla.reduce<Date | null>((m, h) => (!m || h.createdAt > m ? h.createdAt : m), null);
+    const diasDesdeUltimo = ultimoEnvio ? Math.floor((ahora.getTime() - ultimoEnvio.getTime()) / DIA_MS) : null;
     if (c.prospecto && !horarioLey2300(ahora, tz)) continue;
     const decision =
       sec.modo === "etapa"
@@ -200,8 +206,14 @@ async function tandaDeOrganizacion(organizationId: string, ahora: Date): Promise
             dias,
             hechos: pasosHechos,
             final: sec.secuencia.final,
+            diasDesdeUltimo,
           })
-        : decidirSeguimiento({ ajustes: c.prospecto ? prospeccion : seguimiento, dias, hechos: pasosHechos });
+        : decidirSeguimiento({
+            ajustes: c.prospecto ? prospeccion : seguimiento,
+            dias,
+            hechos: pasosHechos,
+            diasDesdeUltimo,
+          });
     if (!decision) continue;
     acciones++;
 

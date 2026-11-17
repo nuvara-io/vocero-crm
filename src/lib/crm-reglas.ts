@@ -199,18 +199,29 @@ export function decidirSeguimiento(input: {
   hechos: ReadonlySet<number>;
   /** 077 — Acción al final (por defecto, archivar). */
   final?: FinalEtapa;
+  /**
+   * 077 — Días desde el último paso enviado de este ancla. Con él se respeta
+   * el espacio ENTRE pasos: un chat viejo que ya pasó todos sus días recibe
+   * el paso 1 hoy y el 2 cuando se cumpla la diferencia, no 15 minutos después.
+   */
+  diasDesdeUltimo?: number | null;
 }): DecisionSeguimiento {
   const { ajustes, dias, hechos } = input;
   const final = input.final ?? "archivar";
   if (!ajustes.enabled || hechos.has(0)) return null;
   const pasos = [...ajustes.pasos].sort((a, b) => a.dias - b.dias);
+  const desde = input.diasDesdeUltimo;
   for (let i = 0; i < pasos.length; i++) {
     const n = i + 1;
     if (hechos.has(n)) continue;
     const paso = pasos[i]!;
-    return dias >= paso.dias ? { accion: "enviar", paso: n, templateId: paso.templateId } : null;
+    if (dias < paso.dias) return null;
+    if (i > 0 && desde != null && desde < Math.max(1, paso.dias - pasos[i - 1]!.dias)) return null;
+    return { accion: "enviar", paso: n, templateId: paso.templateId };
   }
   if (final === "nada" || ajustes.archivarDias <= 0 || dias < ajustes.archivarDias) return null;
+  const ultimo = pasos.at(-1);
+  if (ultimo && desde != null && desde < Math.max(1, ajustes.archivarDias - ultimo.dias)) return null;
   return final === "perdido" ? { accion: "perdido" } : { accion: "archivar" };
 }
 

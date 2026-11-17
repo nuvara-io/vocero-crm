@@ -21,6 +21,8 @@ export const ETAPAS_DEMO = ["Demo hecha", "No asistió", "Seguimiento"] as const
 /** Pasos del seguimiento de no asistió en `followup_send` (no chocan con 0–3). */
 const PASO_NO_ASISTIO_1 = 101;
 const PASO_NO_ASISTIO_2 = 102;
+/** 077 — Hasta cuánto después de marcar «no asistió» sale el primer mensaje. */
+export const VENTANA_PASO1_MS = 6 * 60 * 60 * 1000;
 
 type Stage = typeof schema.pipelineStage.$inferSelect;
 
@@ -240,6 +242,9 @@ export async function recuperarNoAsistidos(organizationId: string, ahora = new D
 
     if (!paso1) {
       if (ahora.getTime() < c.marcadaEn.getTime() + noAsistio.minutos * 60 * 1000) continue;
+      // 077 — El primer mensaje dice «te esperé en la demostración de hoy»: solo
+      // para citas marcadas hace poco, nunca para las de días atrás.
+      if (ahora.getTime() - c.marcadaEn.getTime() > VENTANA_PASO1_MS) continue;
       const ok = await enviar(organizationId, conv.id, noAsistio.plantilla1, c.nombre, plantilla, ancla, PASO_NO_ASISTIO_1);
       if (ok) {
         resumen.enviados1++;

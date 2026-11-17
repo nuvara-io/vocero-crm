@@ -139,3 +139,27 @@ describe("sugerirVariables y el punto de la hora", () => {
     expect(v[2]!.valor).toBe("9:25 a. m");
   });
 });
+
+describe("espacio entre pasos (chats viejos)", () => {
+  const ajustes = {
+    enabled: true,
+    pasos: [
+      { dias: 3, templateId: "t1" },
+      { dias: 7, templateId: "t2" },
+    ],
+    archivarDias: 10,
+  };
+  it("un chat de 30 días recibe el paso 1, pero no el 2 a los 15 minutos", () => {
+    expect(decidirSeguimiento({ ajustes, dias: 30, hechos: new Set(), diasDesdeUltimo: null })).toMatchObject({ paso: 1 });
+    expect(decidirSeguimiento({ ajustes, dias: 30, hechos: new Set([1]), diasDesdeUltimo: 0 })).toBeNull();
+  });
+  it("el paso 2 sale cuando se cumple la diferencia (4 días)", () => {
+    expect(decidirSeguimiento({ ajustes, dias: 34, hechos: new Set([1]), diasDesdeUltimo: 4 })).toMatchObject({ paso: 2 });
+  });
+  it("la acción final espera su diferencia desde el último paso (3 días)", () => {
+    expect(decidirSeguimiento({ ajustes, dias: 35, hechos: new Set([1, 2]), diasDesdeUltimo: 1 })).toBeNull();
+    expect(decidirSeguimiento({ ajustes, dias: 37, hechos: new Set([1, 2]), diasDesdeUltimo: 3 })).toEqual({
+      accion: "archivar",
+    });
+  });
+});
