@@ -2,7 +2,7 @@ import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import { scoped } from "@/lib/db/tenant";
-import { decidirSeguimiento } from "@/lib/crm-reglas";
+import { decidirSeguimiento, secuenciaDeEtapa } from "@/lib/crm-reglas";
 import { festivosDe } from "@/lib/festivos";
 import { horarioLey2300 } from "@/lib/prospeccion";
 import { primerNombre } from "@/lib/respuestas-rapidas";
@@ -11,6 +11,7 @@ import { businessTimezone } from "@/server/analytics/period";
 import { ajustesCrm } from "@/server/crm-ajustes";
 import { recuperarNoAsistidos } from "@/server/embudo-demo";
 import { publish } from "@/server/events/bus";
+import { moveLeadToStage } from "@/server/leads/stage-history";
 import { sendTemplate } from "@/server/whatsapp/templates";
 
 /**
@@ -108,6 +109,14 @@ async function tandaDeOrganizacion(organizationId: string, ahora: Date): Promise
       nombre: schema.contact.name,
       // 072 — Los prospectos llevan su propio seguimiento (y horario de ley).
       prospecto: schema.contact.prospectList,
+      // 077 — Etapa del lead, para su secuencia propia, y si lo atiende una persona.
+      leadId: schema.lead.id,
+      stageId: schema.lead.stageId,
+      atendido: schema.conversation.handoffAt,
+      entroEtapa: sql<Date | null>`(
+        select max(e."occurred_at") from "lead_stage_event" e
+        where e."lead_id" = ${schema.lead.id} and e."to_stage_id" = ${schema.lead.stageId}
+      )`,
       ancla: sql<Date>`(
         select min(m."created_at") from "message" m
         where m."conversation_id" = ${schema.conversation.id}
@@ -124,8 +133,10 @@ async function tandaDeOrganizacion(organizationId: string, ahora: Date): Promise
         schema.conversation.organizationId,
         organizationId,
         eq(schema.conversation.isTest, false),
-        isNull(schema.conversation.handoffAt),
+        // 077 — Los chats con una persona al frente entran solo si así se pidió.
+        seguimiento.incluirAtendidos ? undefined : isNull(schema.conversation.handoffAt),
         isNull(schema.contact.archivedAt),
+        isNull(schema.contact.doNotContactAt),
         eq(schema.pipelineStage.kind, "open"),
         // Un lead real escribió alguna vez; un prospecto con permiso puede no
         // haber contestado todavía (072).
@@ -166,18 +177,51 @@ async function tandaDeOrganizacion(organizationId: string, ahora: Date): Promise
   let acciones = 0;
   for (const c of conAncla) {
     if (acciones >= TOPE_POR_TANDA) break;
-    const ancla = new Date(c.ancla);
+    // 077 — Con secuencia por etapa los días cuentan desde lo más reciente:
+    // nuestro mensaje sin respuesta o la entrada a la etapa. Cambiar de etapa
+    // arranca su propia secuencia (otro ancla, otros pasos).
+    const sec = c.prospecto ? { modo: "general" as const } : secuenciaDeEtapa(seguimiento, c.stageId);
+    if (!sec) continue;
+    if (!c.prospecto && c.atendido && sec.modo !== "etapa") continue;
+    const base = new Date(c.ancla);
+    const entro = c.entroEtapa ? new Date(c.entroEtapa) : null;
+    const ancla = sec.modo === "etapa" && entro && entro > base ? entro : base;
     const dias = Math.floor((ahora.getTime() - ancla.getTime()) / DIA_MS);
     const pasosHechos = new Set(
       hechos
         .filter((h) => h.conversationId === c.conversationId && h.anchorAt.getTime() === ancla.getTime())
         .map((h) => h.step)
     );
-    const ajustes = c.prospecto ? prospeccion : seguimiento;
     if (c.prospecto && !horarioLey2300(ahora, tz)) continue;
-    const decision = decidirSeguimiento({ ajustes, dias, hechos: pasosHechos });
+    const decision =
+      sec.modo === "etapa"
+        ? decidirSeguimiento({
+            ajustes: { enabled: seguimiento.enabled, pasos: sec.secuencia.pasos, archivarDias: sec.secuencia.finalDias },
+            dias,
+            hechos: pasosHechos,
+            final: sec.secuencia.final,
+          })
+        : decidirSeguimiento({ ajustes: c.prospecto ? prospeccion : seguimiento, dias, hechos: pasosHechos });
     if (!decision) continue;
     acciones++;
+
+    if (decision.accion === "perdido") {
+      // 077 — Al final de la secuencia: Perdido «Nunca contestó» (cuenta en el embudo).
+      const perdida = await primeraEtapaPerdida(organizationId);
+      if (perdida) {
+        await moveLeadToStage({
+          organizationId,
+          leadId: c.leadId,
+          toStageId: perdida,
+          source: "sistema",
+          lossReason: "nunca_contesto",
+        }).catch(() => null);
+      }
+      await registrar(organizationId, c.conversationId, 0, ancla, null, Boolean(perdida), perdida ? null : "No hay etapa perdida");
+      publish(organizationId, { type: "conversation.updated", data: { conversation: { id: c.conversationId } } });
+      resumen.archivadas++;
+      continue;
+    }
 
     if (decision.accion === "archivar") {
       await db
@@ -241,4 +285,15 @@ export async function ultimosSeguimientos(organizationId: string, limite = 20) {
     .where(scoped(schema.followupSend.organizationId, organizationId))
     .orderBy(sql`${schema.followupSend.createdAt} desc`)
     .limit(limite);
+}
+
+/** 077 — La primera etapa perdida del tablero (por posición). */
+async function primeraEtapaPerdida(organizationId: string): Promise<string | null> {
+  const rows = await getDb()
+    .select({ id: schema.pipelineStage.id })
+    .from(schema.pipelineStage)
+    .where(scoped(schema.pipelineStage.organizationId, organizationId, eq(schema.pipelineStage.kind, "lost")))
+    .orderBy(schema.pipelineStage.position)
+    .limit(1);
+  return rows[0]?.id ?? null;
 }

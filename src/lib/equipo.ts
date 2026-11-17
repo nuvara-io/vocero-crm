@@ -45,7 +45,9 @@ export function useEquipo(): MiembroDto[] | null {
 export type AccionLote =
   | { accion: "archivar"; archivado: boolean }
   | { accion: "asignar"; userId: string | null }
-  | { accion: "etapa"; stageId: string; lossReason?: string };
+  | { accion: "etapa"; stageId: string; lossReason?: string }
+  /** 077 — Perdido «No era el perfil» y archivado. */
+  | { accion: "no_es_perfil" };
 
 /** Devuelve el mensaje de error, o null si salió bien. */
 export async function aplicarLote(ids: string[], accion: AccionLote): Promise<string | null> {

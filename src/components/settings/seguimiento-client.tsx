@@ -7,7 +7,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SelectNativo } from "@/components/ui/select-nativo";
 import { Switch } from "@/components/ui/switch";
-import type { AjustesNoAsistio, AjustesSeguimiento, PasoSeguimiento, ReglaResponsable } from "@/lib/crm-reglas";
+import type {
+  AjustesNoAsistio,
+  AjustesRecordatorio,
+  AjustesSeguimiento,
+  PasoSeguimiento,
+  ReglaResponsable,
+  SecuenciaEtapa,
+} from "@/lib/crm-reglas";
+import { SeguimientoEtapas, secuenciasRecomendadas } from "@/components/settings/seguimiento-etapas";
 import { cn } from "@/lib/utils";
 
 type Datos = {
@@ -17,6 +25,7 @@ type Datos = {
     prospeccion?: AjustesSeguimiento;
     valorDemoCents?: number | null;
     noAsistio?: AjustesNoAsistio;
+    recordatorio?: AjustesRecordatorio;
   };
   equipo: { userId: string; name: string }[];
   plantillas: { id: string; name: string; body: string }[];
@@ -189,6 +198,29 @@ function Seguimiento({
   );
   const [archivar, setArchivar] = useState(String(s.archivarDias));
   const [estado, setEstado] = useState<string | null>(null);
+  // 077 — Secuencia por etapa y chats atendidos por una persona.
+  const [porEtapa, setPorEtapa] = useState<SecuenciaEtapa[]>(s.porEtapa ?? []);
+  const [incluirAtendidos, setIncluirAtendidos] = useState(s.incluirAtendidos === true);
+  const [etapas, setEtapas] = useState<{ id: string; name: string; kind: "open" | "won" | "lost" }[]>([]);
+  useEffect(() => {
+    if (esProspeccion) return;
+    fetch("/api/pipeline/stages")
+      .then((r) => (r.ok ? r.json() : { stages: [] }))
+      .then((d: { stages?: typeof etapas }) => setEtapas(d.stages ?? []))
+      .catch(() => {});
+  }, [esProspeccion]);
+  const porEtapaActiva = !esProspeccion && porEtapa.length > 0;
+
+  function cargarRecomendacion() {
+    const r = secuenciasRecomendadas(etapas, datos.plantillas);
+    setPorEtapa(r.secuencias);
+    setIncluirAtendidos(true);
+    setEstado(
+      r.faltan.length > 0
+        ? `Cargada. Faltan plantillas por aprobar en Meta: ${r.faltan.join(", ")} (esos pasos quedaron fuera).`
+        : "Cargada. Revisa y guarda."
+    );
+  }
 
   const cambiarPaso = (i: number, cambio: Partial<PasoSeguimiento>) =>
     setPasos((ps) => ps.map((p, j) => (j === i ? { ...p, ...cambio } : p)));
@@ -200,6 +232,15 @@ function Seguimiento({
         enabled,
         pasos: validos,
         archivarDias: esProspeccion ? 0 : Math.max(0, Number(archivar) || 0),
+        ...(esProspeccion
+          ? {}
+          : {
+              porEtapa: porEtapa.map((x) => ({
+                ...x,
+                pasos: x.pasos.filter((p) => p.templateId && p.dias >= 1),
+              })),
+              incluirAtendidos,
+            }),
       },
     });
     setEstado(e ?? "Guardado.");
@@ -238,7 +279,37 @@ function Seguimiento({
           </p>
         )}
 
-        {pasos.map((p, i) => (
+        {!esProspeccion && (
+          <div className="space-y-3 rounded-lg border px-3 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-sm font-semibold">Secuencia por etapa</p>
+                <p className="text-xs text-text-3">
+                  Cada situación con su mensaje. Los días cuentan desde que entró a la etapa o desde tu último mensaje
+                  sin respuesta. Las etapas sin marcar no reciben nada.
+                </p>
+              </div>
+              <Button variant="outline" size="sm" onClick={cargarRecomendacion} disabled={etapas.length === 0}>
+                Cargar recomendación
+              </Button>
+            </div>
+            <SeguimientoEtapas etapas={etapas} plantillas={datos.plantillas} valor={porEtapa} onChange={setPorEtapa} />
+            <label className="flex items-start gap-2 text-xs">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={incluirAtendidos}
+                onChange={(e) => setIncluirAtendidos(e.target.checked)}
+              />
+              <span>
+                Incluir chats que atiende una persona. Solo reciben las plantillas de su etapa; nunca se les escribe
+                si contestaron.
+              </span>
+            </label>
+          </div>
+        )}
+
+        {!porEtapaActiva && pasos.map((p, i) => (
           <div key={i} className="grid items-end gap-2 sm:grid-cols-[7rem_minmax(0,1fr)_auto]">
             <div className="space-y-1.5">
               <Label htmlFor={`${clave}-dias-${i}`}>Paso {i + 1}: a los</Label>
@@ -270,7 +341,7 @@ function Seguimiento({
             </Button>
           </div>
         ))}
-        {pasos.length < 3 && (
+        {!porEtapaActiva && pasos.length < 3 && (
           <Button
             variant="outline"
             size="sm"
@@ -280,7 +351,7 @@ function Seguimiento({
           </Button>
         )}
 
-        {!esProspeccion && (
+        {!esProspeccion && !porEtapaActiva && (
         <div className="flex items-center gap-2">
           <Label htmlFor="archivar">Archivar a los</Label>
           <Input
@@ -306,7 +377,14 @@ function Seguimiento({
             <p className="text-xs font-semibold uppercase tracking-wide text-text-3">Lo último que hizo</p>
             {datos.ultimos.map((u, i) => (
               <p key={i} className="text-xs text-text-2">
-                {fecha(u.createdAt)} · {u.nombre} · {u.step === 0 ? "archivado" : `paso ${u.step}`}
+                {fecha(u.createdAt)} · {u.nombre} ·{" "}
+                {u.step === 0
+                  ? "acción final"
+                  : u.step === 201
+                    ? "recordatorio de demo"
+                    : u.step > 100
+                      ? "no asistió"
+                      : `paso ${u.step}`}
                 {u.ok ? "" : ` · no se envió: ${u.error ?? "error"}`}
               </p>
             ))}
@@ -334,9 +412,17 @@ function Demos({ datos, onGuardado }: { datos: Datos; onGuardado: () => Promise<
   const [dias2, setDias2] = useState(String(n.dias2));
   const [plantilla2, setPlantilla2] = useState(n.plantilla2 ?? "");
   const [estado, setEstado] = useState<string | null>(null);
+  // 077 — Recordatorio N minutos antes de la demo.
+  const rec = datos.ajustes.recordatorio ?? { enabled: false, minutos: 15, plantilla: null };
+  const [recEnabled, setRecEnabled] = useState(rec.enabled);
+  const [recMinutos, setRecMinutos] = useState(String(rec.minutos));
+  const [recPlantilla, setRecPlantilla] = useState(
+    rec.plantilla ?? datos.plantillas.find((t) => t.name === "recordatorio_demostracion")?.id ?? ""
+  );
 
   async function enviar() {
     if (enabled && !plantilla1) return setEstado("Elige la plantilla del primer mensaje");
+    if (recEnabled && !recPlantilla) return setEstado("Elige la plantilla del recordatorio");
     const pesos = Number(valor.replace(/\D/g, ""));
     const e = await guardar({
       valorDemoCents: pesos > 0 ? pesos * 100 : null,
@@ -346,6 +432,11 @@ function Demos({ datos, onGuardado }: { datos: Datos; onGuardado: () => Promise<
         plantilla1: plantilla1 || null,
         dias2: Math.min(14, Math.max(1, Number(dias2) || 1)),
         plantilla2: plantilla2 || null,
+      },
+      recordatorio: {
+        enabled: recEnabled,
+        minutos: Math.min(240, Math.max(5, Number(recMinutos) || 15)),
+        plantilla: recPlantilla || null,
       },
     });
     setEstado(e ?? "Guardado.");
@@ -386,6 +477,33 @@ function Demos({ datos, onGuardado }: { datos: Datos; onGuardado: () => Promise<
           <span className="text-xs text-text-3">
             pesos: lo que pagaría si compra (la demo es gratis). Solo si el lead no tiene valor todavía.
           </span>
+        </div>
+
+        <div className="flex items-center justify-between rounded-lg border bg-subtle px-4 py-3">
+          <div>
+            <p className="text-sm font-semibold">Recordatorio antes de la demo: {recEnabled ? "encendido" : "apagado"}</p>
+            <p className="text-xs text-text-3">
+              Le llega con su nombre, el día, la hora y el enlace de la reunión. Una vez por cita; si se reagenda, sale
+              de nuevo.
+            </p>
+          </div>
+          <Switch checked={recEnabled} onCheckedChange={setRecEnabled} label="Recordatorio antes de la demo" />
+        </div>
+        <div className="grid items-end gap-2 sm:grid-cols-[9rem_minmax(0,1fr)]">
+          <div className="space-y-1.5">
+            <Label htmlFor="rec-minutos">Enviar</Label>
+            <div className="flex items-center gap-2">
+              <Input
+                id="rec-minutos"
+                inputMode="numeric"
+                value={recMinutos}
+                onChange={(e) => setRecMinutos(e.target.value.replace(/\D/g, ""))}
+                className="w-16"
+              />
+              <span className="text-xs text-text-3">min antes</span>
+            </div>
+          </div>
+          {selectPlantilla(recPlantilla, setRecPlantilla, "Plantilla del recordatorio", "Elige una plantilla")}
         </div>
 
         <div className="flex items-center justify-between rounded-lg border bg-subtle px-4 py-3">

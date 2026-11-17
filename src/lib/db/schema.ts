@@ -1202,6 +1202,13 @@ export const capiSettings = pgTable(
       () => pipelineStage.id,
       { onDelete: "set null" }
     ),
+    /**
+     * 077 — Qué etapa significa "demo agendada" (se reporta como
+     * `LeadSubmitted`). NULL = no se emite. Mismo `set null` que la de arriba.
+     */
+    demoStageId: text("demo_stage_id").references(() => pipelineStage.id, {
+      onDelete: "set null",
+    }),
     status: text("status", { enum: ["connected", "error"] })
       .notNull()
       .default("connected"),

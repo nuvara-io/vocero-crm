@@ -1,3 +1,4 @@
+import { problemasDePlantilla } from "@/lib/plantilla-variables";
 import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { bloqueoDePlantilla, diaEn } from "@/lib/prospeccion";
 import { businessTimezone } from "@/server/analytics/period";
@@ -454,6 +455,9 @@ export async function sendTemplate(input: {
         : `La plantilla requiere ${variableCount} valores: falta {{${n}}}`
     );
   }
+  // 077 — Un párrafo en la casilla del nombre no sale (ni a mano ni en automático).
+  const problema = problemasDePlantilla(template.body, values).find(Boolean);
+  if (problema) throw new TemplateError("invalid", problema);
 
   const rows = await db
     .select({ conversation: schema.conversation, contact: schema.contact })

@@ -14,6 +14,7 @@ import {
   Power,
   Trash2,
   UserRound,
+  UserX,
 } from "lucide-react";
 import {
   externalAnswerLabel,
@@ -390,25 +391,41 @@ export function ContactPanel({
           ) : (
             <p className="text-[12px] text-text-3">Este contacto aún no tiene lead.</p>
           )}
-          <Button
-            size="sm"
-            variant="outline"
-            className="mt-2.5 w-full"
-            disabled={aplicando}
-            onClick={() => void lote({ accion: "archivar", archivado: !conversation.archivedAt })}
-          >
-            {conversation.archivedAt ? (
-              <>
-                <ArchiveRestore className="h-4 w-4" strokeWidth={1.7} />
-                Sacar de archivadas
-              </>
-            ) : (
-              <>
-                <Archive className="h-4 w-4" strokeWidth={1.7} />
-                Archivar
-              </>
-            )}
-          </Button>
+          <div className="mt-2.5 flex gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className="flex-1"
+              disabled={aplicando}
+              onClick={() => void lote({ accion: "archivar", archivado: !conversation.archivedAt })}
+            >
+              {conversation.archivedAt ? (
+                <>
+                  <ArchiveRestore className="h-4 w-4" strokeWidth={1.7} />
+                  Sacar de archivadas
+                </>
+              ) : (
+                <>
+                  <Archive className="h-4 w-4" strokeWidth={1.7} />
+                  Archivar
+                </>
+              )}
+            </Button>
+            {/* 077 — Préstamos, empleo y demás: Perdido «No era el perfil» y archivado. */}
+            {!conversation.archivedAt && conversation.leadId ? (
+              <Button
+                size="sm"
+                variant="outline"
+                className="flex-1 text-danger-text hover:text-danger-text"
+                disabled={aplicando}
+                title="Lo pasa a Perdido con el motivo «No era el perfil» y archiva el chat"
+                onClick={() => void lote({ accion: "no_es_perfil" })}
+              >
+                <UserX className="h-4 w-4" strokeWidth={1.7} />
+                No es perfil
+              </Button>
+            ) : null}
+          </div>
           {conversation.archivedAt && (
             <p className="mt-1.5 text-[11px] text-text-3">
               Archivada: no sale en la Bandeja. Si escribe de nuevo, vuelve sola.

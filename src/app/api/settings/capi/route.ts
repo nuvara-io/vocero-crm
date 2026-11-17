@@ -37,6 +37,8 @@ const putSchema = z.object({
   token: z.string().trim().min(1).optional(),
   /** La etapa que ESTE negocio considera "lead calificado"; null lo apaga. */
   qualifiedStageId: z.string().trim().min(1).nullish(),
+  /** 077 — La etapa que significa "demo agendada"; null lo apaga. */
+  demoStageId: z.string().trim().min(1).nullish(),
 });
 
 export const PUT = withAuth(async (session, req: Request) => {
@@ -70,11 +72,20 @@ export const PUT = withAuth(async (session, req: Request) => {
     );
   }
 
+  const demoStageId = body.data.demoStageId ?? null;
+  if (
+    demoStageId &&
+    !(await stageBelongsToOrg(session.organizationId, demoStageId))
+  ) {
+    return apiError(422, "etapa_invalida", "Esa etapa no es de este negocio");
+  }
+
   await saveCapiSettings({
     organizationId: session.organizationId,
     datasetId: body.data.datasetId,
     token,
     qualifiedStageId,
+    demoStageId,
   });
   return Response.json({ ok: true });
 });

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Archive, ArchiveRestore, ArrowRightLeft, Send } from "lucide-react";
+import { Archive, ArchiveRestore, ArrowRightLeft, Send, UserX } from "lucide-react";
 import type { ConversationDto, LossReason, StageDto, TemplateDto } from "@/lib/types";
 import { LOSS_REASON_LABEL } from "@/lib/types";
 import { countVariables } from "@/lib/templates";
@@ -145,6 +145,19 @@ export function LoteBar({
           )}
           {enArchivadas ? "Desarchivar" : "Archivar"}
         </Button>
+        {!enArchivadas && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="w-full text-danger-text hover:text-danger-text"
+            disabled={trabajando}
+            title="Perdido «No era el perfil» y archivadas"
+            onClick={() => void correr({ accion: "no_es_perfil" }, "Marcadas como no es perfil y archivadas.")}
+          >
+            <UserX className="h-4 w-4" strokeWidth={1.7} />
+            No es perfil
+          </Button>
+        )}
         <Button
           size="sm"
           variant={panel === "etapa" ? "default" : "outline"}

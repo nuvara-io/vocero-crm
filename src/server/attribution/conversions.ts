@@ -27,6 +27,8 @@ import { getAttributionForConversation } from "@/server/attribution/store";
 /** Los dos eventos que Vocero emite (nombres del catálogo de Meta, tal cual). */
 export const QUALIFIED_EVENT = "QualifiedLead";
 export const PURCHASE_EVENT = "Purchase";
+/** 077 — Demo agendada. `LeadSubmitted` es el único del catálogo que encaja. */
+export const DEMO_EVENT = "LeadSubmitted";
 
 const NO_CLID_REASON =
   "sin ctwa_clid: la conversación no vino de un anuncio de WhatsApp";
@@ -180,8 +182,11 @@ export async function reportStageChange(input: {
     const isQualified =
       settings?.qualifiedStageId != null &&
       settings.qualifiedStageId === input.toStageId;
+    const isDemo =
+      settings?.demoStageId != null &&
+      settings.demoStageId === input.toStageId;
     const isWon = input.toStageKind === "won";
-    if (!isQualified && !isWon) return;
+    if (!isQualified && !isDemo && !isWon) return;
 
     const db = getDb();
     // La conversación REAL del contacto (índice único parcial: una por
@@ -223,6 +228,16 @@ export async function reportStageChange(input: {
         row.conversationId,
         PURCHASE_EVENT,
         purchaseCustomData(row)
+      );
+      return;
+    }
+
+    if (isDemo) {
+      await emitConversion(
+        input.organizationId,
+        row.conversationId,
+        DEMO_EVENT,
+        { lead_stage: "demo_scheduled" }
       );
       return;
     }

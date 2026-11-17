@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import {
   nombreLegible,
+  problemasDePlantilla,
   sugerirVariables,
   trozosDeVistaPrevia,
   type DatosPlantilla,
@@ -103,6 +104,16 @@ export function TemplateSender({
   const variableCount = selected ? countVariables(selected.body) : 0;
   const values = Array.from({ length: variableCount }, (_, i) => variables[i] ?? "");
   const missingValue = values.some((v) => !v.trim());
+  // 077 — Un párrafo dentro de la casilla del nombre no sale.
+  const problemas = selected ? problemasDePlantilla(selected.body, values) : [];
+  const hayProblema = problemas.some(Boolean);
+  // Con una demo por venir, el recordatorio va de primero.
+  const conCita = Boolean(datos?.cita?.proxima);
+  const ordenadas = conCita
+    ? [...templates].sort(
+        (a, b) => Number(/recordatorio/i.test(b.name)) - Number(/recordatorio/i.test(a.name))
+      )
+    : templates;
 
   function elegir(t: TemplateDto) {
     setSelectedId(t.id);
@@ -158,16 +169,17 @@ export function TemplateSender({
           }}
         >
           <option value="">Elige una plantilla aprobada…</option>
-          {templates.map((t) => (
+          {ordenadas.map((t) => (
             <option key={t.id} value={t.id}>
               {nombreLegible(t.name)}
+              {conCita && /recordatorio/i.test(t.name) ? " · tiene demo agendada" : ""}
             </option>
           ))}
         </SelectNativo>
         <Button
           className="shrink-0"
           onClick={() => void send()}
-          disabled={!selected || sending || missingValue}
+          disabled={!selected || sending || missingValue || hayProblema}
         >
           {sending ? "Enviando…" : "Enviar plantilla"}
         </Button>
@@ -196,8 +208,16 @@ export function TemplateSender({
                       })
                     }
                     placeholder="Escríbelo aquí"
-                    className={cn("h-8 text-sm", !value.trim() && "border-warning-soft")}
+                    className={cn(
+                      "h-8 text-sm",
+                      !value.trim() && "border-warning-soft",
+                      problemas[i] && "border-destructive"
+                    )}
+                    aria-invalid={problemas[i] ? true : undefined}
                   />
+                  {problemas[i] ? (
+                    <p className="text-xs text-destructive">{problemas[i]}</p>
+                  ) : null}
                 </div>
               ))
             )}

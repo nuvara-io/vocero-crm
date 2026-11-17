@@ -47,6 +47,21 @@ const seguimientoSchema = z.object({
     .array(z.object({ dias: z.number().int().min(1).max(60), templateId: z.string().min(1) }))
     .max(3),
   archivarDias: z.number().int().min(0).max(120),
+  /** 077 — Secuencia por etapa. */
+  porEtapa: z
+    .array(
+      z.object({
+        stageId: z.string().min(1),
+        pasos: z
+          .array(z.object({ dias: z.number().int().min(1).max(60), templateId: z.string().min(1) }))
+          .max(3),
+        finalDias: z.number().int().min(0).max(120),
+        final: z.enum(["archivar", "perdido", "nada"]),
+      })
+    )
+    .max(30)
+    .optional(),
+  incluirAtendidos: z.boolean().optional(),
 });
 
 const putSchema = z.object({
@@ -56,6 +71,14 @@ const putSchema = z.object({
   prospeccion: seguimientoSchema.optional(),
   /** 073 — valor por defecto al entrar a Demo agendada (centavos); null = sin valor. */
   valorDemoCents: z.number().int().min(0).max(1_000_000_000_00).nullable().optional(),
+  /** 077 — recordatorio automático antes de la demo. */
+  recordatorio: z
+    .object({
+      enabled: z.boolean(),
+      minutos: z.number().int().min(5).max(240),
+      plantilla: z.string().min(1).nullable(),
+    })
+    .optional(),
   /** 073 — recuperación de quien no asistió a la demo. */
   noAsistio: z
     .object({

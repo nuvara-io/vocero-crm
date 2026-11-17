@@ -207,6 +207,12 @@ export async function GET(req: Request, ctx: Params) {
     });
   }
 
+  // 077 — GET {wabaId}/dataset → vacío hasta que un POST lo cree.
+  if (path.length === 2 && path[1] === "dataset") {
+    const id = getWaMockState().datasets?.[path[0]!];
+    return Response.json({ data: id ? [{ id, name: "Dataset mock" }] : [] });
+  }
+
   // 066 — GET {wabaId}/phone_numbers → los números sembrados de esa WABA.
   if (path.length === 2 && path[1] === "phone_numbers") {
     return Response.json({ data: getWaMockState().wabaNumbers[path[0]!] ?? [] });
@@ -354,6 +360,14 @@ export async function POST(req: Request, ctx: Params) {
   const path = normalizePath((await ctx.params).path);
   const token = bearerToken(req);
   if (token.endsWith("-invalid")) return invalidTokenResponse();
+
+  // 077 — POST {wabaId}/dataset → crea (o devuelve) el dataset de la WABA.
+  if (path.length === 2 && path[1] === "dataset") {
+    const state = getWaMockState();
+    state.datasets ??= {};
+    const id = (state.datasets[path[0]!] ??= `ds-${path[0]}`);
+    return Response.json({ id });
+  }
 
   // POST {phoneNumberId}/media (multipart, 008) → id de media subido.
   // Va ANTES del parseo JSON: el body es form-data.

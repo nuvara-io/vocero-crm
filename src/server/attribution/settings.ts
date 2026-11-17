@@ -16,6 +16,7 @@ export type CapiSettings = {
   datasetId: string;
   token: string;
   qualifiedStageId: string | null;
+  demoStageId: string | null;
   status: "connected" | "error";
 };
 
@@ -25,6 +26,7 @@ export type CapiSettingsView = {
   status: "connected" | "error";
   tokenLast4: string;
   qualifiedStageId: string | null;
+  demoStageId: string | null;
 };
 
 export async function getCapiSettings(
@@ -46,6 +48,7 @@ export async function getCapiSettings(
       tag: row.tokenTag,
     }),
     qualifiedStageId: row.qualifiedStageId,
+    demoStageId: row.demoStageId ?? null,
     status: row.status,
   };
 }
@@ -60,6 +63,7 @@ export async function getCapiSettingsView(
     status: settings.status,
     tokenLast4: settings.token.slice(-4),
     qualifiedStageId: settings.qualifiedStageId,
+    demoStageId: settings.demoStageId,
   };
 }
 
@@ -68,6 +72,7 @@ export async function saveCapiSettings(input: {
   datasetId: string;
   token: string;
   qualifiedStageId: string | null;
+  demoStageId?: string | null;
 }): Promise<void> {
   const db = getDb();
   const enc = encryptSecret(input.token);
@@ -81,6 +86,7 @@ export async function saveCapiSettings(input: {
       tokenIv: enc.iv,
       tokenTag: enc.tag,
       qualifiedStageId: input.qualifiedStageId,
+      demoStageId: input.demoStageId ?? null,
       status: "connected",
     })
     .onConflictDoUpdate({
@@ -91,6 +97,7 @@ export async function saveCapiSettings(input: {
         tokenIv: enc.iv,
         tokenTag: enc.tag,
         qualifiedStageId: input.qualifiedStageId,
+        demoStageId: input.demoStageId ?? null,
         status: "connected",
         updatedAt: new Date(),
       },

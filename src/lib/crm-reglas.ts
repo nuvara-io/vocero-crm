@@ -120,12 +120,60 @@ export function elegirResponsable(
 
 export type PasoSeguimiento = { dias: number; templateId: string };
 
+/** 077 — Qué pasa al final de la secuencia de una etapa. */
+export type FinalEtapa = "archivar" | "perdido" | "nada";
+
+/**
+ * 077 — La secuencia de UNA etapa: cada situación lleva su mensaje (no es lo
+ * mismo quien nunca contestó que quien ya creó la cuenta). Los días cuentan
+ * desde que el lead entró a la etapa o desde nuestro último mensaje sin
+ * respuesta, lo que sea más reciente.
+ */
+export type SecuenciaEtapa = {
+  stageId: string;
+  pasos: PasoSeguimiento[];
+  /** Días sin respuesta para la acción final; 0 = sin acción final. */
+  finalDias: number;
+  final: FinalEtapa;
+};
+
 export type AjustesSeguimiento = {
   enabled: boolean;
   pasos: PasoSeguimiento[];
   /** Días sin respuesta para archivar; 0 = no archivar. */
   archivarDias: number;
+  /**
+   * 077 — Secuencias por etapa. Si hay al menos una, SOLO esas etapas
+   * reciben seguimiento (los pasos generales quedan de respaldo para nada):
+   * así «Demo agendada» o «Activado» nunca reciben un «retomemos».
+   */
+  porEtapa?: SecuenciaEtapa[];
+  /** 077 — También en chats que atiende una persona (solo plantillas). */
+  incluirAtendidos?: boolean;
 };
+
+/** 077 — Recordatorio de la demo N minutos antes. */
+export type AjustesRecordatorio = {
+  enabled: boolean;
+  minutos: number;
+  plantilla: string | null;
+};
+
+export const RECORDATORIO_POR_DEFECTO: AjustesRecordatorio = {
+  enabled: false,
+  minutos: 15,
+  plantilla: null,
+};
+
+/** 077 — ¿Toca el recordatorio de esta cita? (solo dentro de la ventana previa). */
+export function tocaRecordatorio(input: {
+  ahora: Date;
+  citaEn: Date;
+  minutos: number;
+}): boolean {
+  const falta = input.citaEn.getTime() - input.ahora.getTime();
+  return falta > 0 && falta <= input.minutos * 60 * 1000;
+}
 
 export const SEGUIMIENTO_POR_DEFECTO: AjustesSeguimiento = {
   enabled: false,
@@ -136,6 +184,7 @@ export const SEGUIMIENTO_POR_DEFECTO: AjustesSeguimiento = {
 export type DecisionSeguimiento =
   | { accion: "enviar"; paso: number; templateId: string }
   | { accion: "archivar" }
+  | { accion: "perdido" }
   | null;
 
 /**
@@ -144,12 +193,15 @@ export type DecisionSeguimiento =
  * no salta al 2 aunque ya hayan pasado sus días.
  */
 export function decidirSeguimiento(input: {
-  ajustes: AjustesSeguimiento;
+  ajustes: Pick<AjustesSeguimiento, "enabled" | "pasos" | "archivarDias">;
   dias: number;
   /** Pasos ya registrados para este ancla (1, 2… y 0 = archivado). */
   hechos: ReadonlySet<number>;
+  /** 077 — Acción al final (por defecto, archivar). */
+  final?: FinalEtapa;
 }): DecisionSeguimiento {
   const { ajustes, dias, hechos } = input;
+  const final = input.final ?? "archivar";
   if (!ajustes.enabled || hechos.has(0)) return null;
   const pasos = [...ajustes.pasos].sort((a, b) => a.dias - b.dias);
   for (let i = 0; i < pasos.length; i++) {
@@ -158,8 +210,19 @@ export function decidirSeguimiento(input: {
     const paso = pasos[i]!;
     return dias >= paso.dias ? { accion: "enviar", paso: n, templateId: paso.templateId } : null;
   }
-  if (ajustes.archivarDias > 0 && dias >= ajustes.archivarDias) return { accion: "archivar" };
-  return null;
+  if (final === "nada" || ajustes.archivarDias <= 0 || dias < ajustes.archivarDias) return null;
+  return final === "perdido" ? { accion: "perdido" } : { accion: "archivar" };
+}
+
+/** 077 — La secuencia que le toca a un lead en esa etapa (o null si no hay). */
+export function secuenciaDeEtapa(
+  ajustes: AjustesSeguimiento,
+  stageId: string
+): { modo: "etapa"; secuencia: SecuenciaEtapa } | { modo: "general" } | null {
+  const porEtapa = ajustes.porEtapa ?? [];
+  if (porEtapa.length === 0) return { modo: "general" };
+  const secuencia = porEtapa.find((x) => x.stageId === stageId);
+  return secuencia ? { modo: "etapa", secuencia } : null;
 }
 
 /** 073 — Recuperación de quien no asistió a la demo. */

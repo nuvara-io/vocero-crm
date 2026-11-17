@@ -232,6 +232,13 @@
       "when": 1794762138083,
       "tag": "0032_prospeccion",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1794927687967,
+      "tag": "0033_capi_demo_stage",
+      "breakpoints": true
     }
   ]
 }

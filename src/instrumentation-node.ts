@@ -1,3 +1,4 @@
+import { iniciarRecordatorios } from "@/server/agenda/recordatorio";
 import { eq } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { mediaDirStatus } from "@/server/media-dir";
@@ -133,6 +134,8 @@ export function resumeWebhooks(): void {
 export function resumeSeguimiento(): void {
   if (process.env.NODE_ENV === "test") return;
   iniciarSeguimiento();
+  // 077 — Recordatorio de la demo N minutos antes (si está encendido).
+  iniciarRecordatorios();
   // 073 — «Demo hecha», «No asistió» y «Seguimiento» visibles desde el arranque.
   void asegurarEtapasDeDemoEnTodas().catch(() => {});
 }

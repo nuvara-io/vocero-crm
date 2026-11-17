@@ -39,6 +39,7 @@ export const GET = withAuth(async (session, _req: Request, ctx: Params) => {
   const columnas = {
     scheduledAt: schema.booking.scheduledAt,
     meetingLink: schema.booking.meetingLink,
+    status: schema.booking.status,
   };
   const delContacto = scoped(schema.booking.organizationId, org, eq(schema.booking.contactId, conv.contactId));
   const haceUnRato = new Date(Date.now() - 2 * 60 * 60 * 1000);
@@ -75,6 +76,7 @@ export const GET = withAuth(async (session, _req: Request, ctx: Params) => {
             .format(cita.scheduledAt)
             .replace(/\s+/g, " "),
           enlace: cita.meetingLink,
+          proxima: cita.status === "agendada" && cita.scheduledAt.getTime() > Date.now(),
         }
       : null,
   };

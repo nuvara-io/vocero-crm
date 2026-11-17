@@ -23,6 +23,7 @@ type Capi = {
   status: "connected" | "error";
   tokenLast4: string;
   qualifiedStageId: string | null;
+  demoStageId: string | null;
 };
 
 type Stage = { id: string; name: string; kind: "open" | "won" | "lost" };
@@ -58,8 +59,13 @@ const STATUS_VARIANT: Record<
 /** Qué significa cada evento, en el idioma del negocio y no en el de Meta. */
 const EVENT_LABEL: Record<string, string> = {
   QualifiedLead: "Lead calificado",
+  LeadSubmitted: "Demo agendada",
   Purchase: "Venta",
 };
+
+function sinTildes(t: string): string {
+  return t.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
 
 export function AdsClient() {
   const [capi, setCapi] = useState<Capi | null>(null);
@@ -68,6 +74,8 @@ export function AdsClient() {
   const [datasetId, setDatasetId] = useState("");
   const [token, setToken] = useState("");
   const [qualifiedStageId, setQualifiedStageId] = useState("");
+  const [demoStageId, setDemoStageId] = useState("");
+  const [buscando, setBuscando] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -90,6 +98,15 @@ export function AdsClient() {
         setCapi(data.capi);
         setDatasetId(data.capi?.datasetId ?? "");
         setQualifiedStageId(data.capi?.qualifiedStageId ?? "");
+        setDemoStageId(data.capi?.demoStageId ?? "");
+        if (!data.capi) {
+          // Sin configuración aún: propone las etapas por su nombre.
+          const st = stg?.ok ? ((await stg.clone().json()) as { stages: Stage[] }).stages : [];
+          const porNombre = (re: RegExp) =>
+            st.find((s) => s.kind === "open" && re.test(sinTildes(s.name)))?.id ?? "";
+          setQualifiedStageId(porNombre(/^calificad/i));
+          setDemoStageId(porNombre(/^demo agendada/i));
+        }
       }
       if (stg?.ok) {
         const data = (await stg.json()) as { stages: Stage[] };
@@ -111,6 +128,7 @@ export function AdsClient() {
         // Vacío = reusar el token de WhatsApp. Se omite en vez de mandar "".
         ...(token.trim() ? { token: token.trim() } : {}),
         qualifiedStageId: qualifiedStageId || null,
+        demoStageId: demoStageId || null,
       }),
     }).catch(() => null);
     setSaving(false);
@@ -138,7 +156,25 @@ export function AdsClient() {
     setDatasetId("");
     setToken("");
     setQualifiedStageId("");
+    setDemoStageId("");
     setSaved(false);
+  }
+
+  async function traerDataset() {
+    setBuscando(true);
+    setError(null);
+    const res = await fetch("/api/settings/capi/dataset", { method: "POST" }).catch(
+      () => null
+    );
+    setBuscando(false);
+    const body = (await res?.json().catch(() => null)) as
+      | { datasetId?: string; error?: { message?: string } }
+      | null;
+    if (!res?.ok || !body?.datasetId) {
+      setError(body?.error?.message ?? "No se pudo traer el conjunto de datos");
+      return;
+    }
+    setDatasetId(body.datasetId);
   }
 
   return (
@@ -166,15 +202,25 @@ export function AdsClient() {
 
           <div className="space-y-1.5">
             <Label htmlFor="capi-dataset">ID del dataset</Label>
-            <Input
-              id="capi-dataset"
-              value={datasetId}
-              onChange={(e) => setDatasetId(e.target.value)}
-              placeholder="1708105527110154"
-            />
+            <div className="flex gap-2">
+              <Input
+                id="capi-dataset"
+                value={datasetId}
+                onChange={(e) => setDatasetId(e.target.value)}
+                placeholder="1708105527110154"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void traerDataset()}
+                disabled={buscando}
+              >
+                {buscando ? "Buscando…" : "Traer de WhatsApp"}
+              </Button>
+            </div>
             <p className="text-xs text-muted-foreground">
-              Administrador de eventos de Meta → tu conjunto de datos. Suele ser
-              el de tu propia cuenta de WhatsApp.
+              «Traer de WhatsApp» busca el conjunto de datos de tu cuenta de
+              WhatsApp (o lo crea si no hay). Luego guarda.
             </p>
           </div>
 
@@ -210,8 +256,28 @@ export function AdsClient() {
                   </option>
                 ))}
             </select>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="capi-demo">¿Qué etapa es una demo agendada?</Label>
+            <select
+              id="capi-demo"
+              value={demoStageId}
+              onChange={(e) => setDemoStageId(e.target.value)}
+              className="h-9 w-full rounded-md border border-input bg-card px-2 text-sm"
+            >
+              <option value="">No reportar demos agendadas</option>
+              {stages
+                .filter((s) => s.kind === "open")
+                .map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+            </select>
             <p className="text-xs text-muted-foreground">
-              La venta se reporta sola cuando el trato entra a tu etapa ganada.
+              La venta se reporta sola, con su monto, cuando el trato entra a
+              tu etapa ganada (por ejemplo, con «Marcar activado»).
             </p>
           </div>
 

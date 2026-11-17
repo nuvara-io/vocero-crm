@@ -1,10 +1,15 @@
 import { eq } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import {
+  RECORDATORIO_POR_DEFECTO,
   SEGUIMIENTO_POR_DEFECTO,
   type AjustesNoAsistio,
+  type AjustesRecordatorio,
   type AjustesSeguimiento,
+  type FinalEtapa,
+  type PasoSeguimiento,
   type ReglaResponsable,
+  type SecuenciaEtapa,
 } from "@/lib/crm-reglas";
 
 /**
@@ -21,6 +26,8 @@ export type AjustesCrm = {
   valorDemoCents: number | null;
   /** 073 — Recuperar a quien no asistió: mensaje a los N minutos y otro al día. */
   noAsistio: AjustesNoAsistio;
+  /** 077 — Recordatorio automático N minutos antes de la demo. */
+  recordatorio: AjustesRecordatorio;
 };
 
 export type { AjustesNoAsistio };
@@ -39,6 +46,7 @@ export const AJUSTES_CRM_POR_DEFECTO: AjustesCrm = {
   prospeccion: { ...SEGUIMIENTO_POR_DEFECTO, archivarDias: 0 },
   valorDemoCents: null,
   noAsistio: NO_ASISTIO_POR_DEFECTO,
+  recordatorio: RECORDATORIO_POR_DEFECTO,
 };
 
 function parse(metadata: string | null): Record<string, unknown> {
@@ -68,7 +76,42 @@ export function normalizar(raw: unknown): AjustesCrm {
     valorDemoCents:
       Number.isFinite(r.valorDemoCents) && Number(r.valorDemoCents) > 0 ? Math.round(Number(r.valorDemoCents)) : null,
     noAsistio: normalizarNoAsistio(r.noAsistio),
+    recordatorio: normalizarRecordatorio(r.recordatorio),
   };
+}
+
+function normalizarRecordatorio(raw: unknown): AjustesRecordatorio {
+  const n = (typeof raw === "object" && raw !== null ? raw : {}) as Record<string, unknown>;
+  const plantilla = typeof n.plantilla === "string" && n.plantilla ? n.plantilla : null;
+  const minutos = Number.isFinite(n.minutos) ? Math.min(240, Math.max(5, Math.floor(Number(n.minutos)))) : 15;
+  return { enabled: n.enabled === true && plantilla !== null, minutos, plantilla };
+}
+
+const FINALES: readonly FinalEtapa[] = ["archivar", "perdido", "nada"];
+
+function normalizarPasos(raw: unknown): PasoSeguimiento[] {
+  return Array.isArray(raw)
+    ? raw
+        .map((p) => p as Record<string, unknown>)
+        .filter((p) => typeof p.templateId === "string" && p.templateId && Number.isFinite(p.dias))
+        .map((p) => ({ dias: Math.max(1, Math.floor(Number(p.dias))), templateId: String(p.templateId) }))
+        .slice(0, 3)
+    : [];
+}
+
+function normalizarPorEtapa(raw: unknown): SecuenciaEtapa[] {
+  if (!Array.isArray(raw)) return [];
+  const vistas = new Set<string>();
+  const out: SecuenciaEtapa[] = [];
+  for (const x of raw) {
+    const e = (typeof x === "object" && x !== null ? x : {}) as Record<string, unknown>;
+    if (typeof e.stageId !== "string" || !e.stageId || vistas.has(e.stageId)) continue;
+    vistas.add(e.stageId);
+    const final = FINALES.includes(e.final as FinalEtapa) ? (e.final as FinalEtapa) : "archivar";
+    const finalDias = Number.isFinite(e.finalDias) ? Math.max(0, Math.floor(Number(e.finalDias))) : 0;
+    out.push({ stageId: e.stageId, pasos: normalizarPasos(e.pasos), finalDias, final });
+  }
+  return out.slice(0, 30);
 }
 
 function normalizarNoAsistio(raw: unknown): AjustesNoAsistio {
@@ -98,7 +141,14 @@ function normalizarSeguimiento(raw: unknown, archivarPorDefecto: number): Ajuste
   const archivarDias = Number.isFinite(seg.archivarDias)
     ? Math.max(0, Math.floor(Number(seg.archivarDias)))
     : archivarPorDefecto;
-  return { enabled: seg.enabled === true && (pasos.length > 0 || archivarDias > 0), pasos, archivarDias };
+  const porEtapa = normalizarPorEtapa(seg.porEtapa);
+  return {
+    enabled: seg.enabled === true && (pasos.length > 0 || archivarDias > 0 || porEtapa.length > 0),
+    pasos,
+    archivarDias,
+    porEtapa,
+    incluirAtendidos: seg.incluirAtendidos === true,
+  };
 }
 
 export async function ajustesCrm(organizationId: string): Promise<AjustesCrm> {

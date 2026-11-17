@@ -15,7 +15,7 @@ describe("074 — variables de plantilla", () => {
     expect(sugerirVariables(body, 4, datos).map((v) => v.valor)).toEqual([
       "Yuli",
       "lunes 16 de noviembre",
-      "9:10 a. m.",
+      "9:10 a. m", // 077: la plantilla ya pone el punto
       "https://meet.google.com/qcm-nihf-rwm",
     ]);
   });

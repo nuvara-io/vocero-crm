@@ -106,6 +106,8 @@ type WaMockState = {
   uploads: MockUpload[];
   templates: MockTemplate[];
   capiEvents: CapiMockEvent[];
+  /** 077 — dataset por WABA (lo crea `POST {waba}/dataset`). */
+  datasets?: Record<string, string>;
   /** Por WABA ID. Sin entrada = la app no está suscrita a esa WABA. */
   wabaSubscriptions: Record<string, MockWabaSubscription>;
   /**

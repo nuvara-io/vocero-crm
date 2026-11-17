@@ -8,7 +8,13 @@ export type DatosPlantilla = {
   nombre: string | null;
   asesor: string | null;
   negocio: string | null;
-  cita: { fecha: string; hora: string; enlace: string | null } | null;
+  cita: {
+    fecha: string;
+    hora: string;
+    enlace: string | null;
+    /** 077 — La cita aún no pasa (agendada y por venir). */
+    proxima?: boolean;
+  } | null;
 };
 
 export type TipoVariable = "nombre" | "asesor" | "negocio" | "fecha" | "hora" | "enlace" | "otro";
@@ -73,10 +79,14 @@ function valorDe(tipo: TipoVariable, datos: DatosPlantilla): string {
 export function sugerirVariables(body: string, cantidad: number, datos: DatosPlantilla): VariableSugerida[] {
   return Array.from({ length: cantidad }, (_, i) => {
     const tipo = tipoDeVariable(body, i + 1);
+    let valor = valorDe(tipo, datos);
+    // 077 — «a las {{3}}.» con «9:25 a. m.» saldría «a. m..»: un solo punto.
+    const tras = new RegExp(`\\{\\{\\s*${i + 1}\\s*\\}\\}\\.`).test(body);
+    if (tras && valor.endsWith(".")) valor = valor.slice(0, -1);
     return {
       tipo,
       etiqueta: tipo === "otro" ? `Valor de {{${i + 1}}}` : ETIQUETA[tipo],
-      valor: valorDe(tipo, datos),
+      valor,
     };
   });
 }
@@ -103,4 +113,32 @@ export function trozosDeVistaPrevia(body: string, valores: readonly string[]): T
 export function nombreLegible(nombre: string): string {
   const s = nombre.replace(/_/g, " ").trim();
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/**
+ * 077 — Un dato que no cabe en su casilla. «Hola {{1}}» con un párrafo entero
+ * dentro sale como «Hola Hola, soy…» (pasó el 17-nov): las casillas de nombre
+ * llevan un nombre, no un mensaje. Devuelve el aviso o null si está bien.
+ */
+export function problemaDeVariable(tipo: TipoVariable, valor: string): string | null {
+  const v = valor.trim();
+  if (!v) return null;
+  if (/[\r\n]/.test(v)) return "No uses saltos de línea en un dato de la plantilla.";
+  if (tipo === "nombre" || tipo === "asesor" || tipo === "negocio") {
+    const palabras = v.split(/\s+/).length;
+    if (v.length > 40 || palabras > 5 || /[.!?¿¡:;]/.test(v)) {
+      return tipo === "nombre"
+        ? "Esta casilla es solo el nombre del cliente. Si quieres decir otra cosa, elige otra plantilla."
+        : "Esta casilla es solo un nombre, no un mensaje.";
+    }
+  }
+  if ((tipo === "fecha" || tipo === "hora") && v.length > 40) {
+    return "Pon solo el día o la hora, no un mensaje.";
+  }
+  return null;
+}
+
+/** 077 — Los avisos de todos los datos de una plantilla (null = sin problema). */
+export function problemasDePlantilla(body: string, valores: readonly string[]): (string | null)[] {
+  return valores.map((v, i) => problemaDeVariable(tipoDeVariable(body, i + 1), v));
 }
