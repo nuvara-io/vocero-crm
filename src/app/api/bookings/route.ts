@@ -2,7 +2,7 @@ import { z } from "zod";
 import { apiError, parseBody, withAuth } from "@/lib/api";
 import { parseRangeQuery } from "@/lib/time/calendar";
 import { agendaDisabledResponse, agendaEnabled } from "@/server/agenda/flag";
-import { bloquesDeGoogle, listBookings, listBookingsInRange } from "@/server/agenda/queries";
+import { bloquesDeGoogle, listBookings, listBookingsInRange, listPendientesDeDemo } from "@/server/agenda/queries";
 import { getSettings } from "@/server/agenda/settings";
 import { createBlock, createSessionBooking } from "@/server/agenda/service";
 import { bookingErrorResponse, bookingPayload } from "@/server/agenda/http";
@@ -23,6 +23,10 @@ export const dynamic = "force-dynamic";
 export const GET = withAuth(async (session, req: Request) => {
   if (!agendaEnabled()) return agendaDisabledResponse();
   const url = new URL(req.url);
+  // 082 — «Por hacer»: de cualquier fecha, no solo del rango visible.
+  if (url.searchParams.get("pendientes") === "1") {
+    return Response.json({ bookings: await listPendientesDeDemo(session.organizationId) });
+  }
   const query = parseRangeQuery(url.searchParams.get("from"), url.searchParams.get("to"));
   if (!query.ok) return apiError(422, "invalid_range", query.message);
   if (!query.range) {

@@ -246,6 +246,13 @@
       "when": 1794933941023,
       "tag": "0034_filtro_perfil",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1795626124379,
+      "tag": "0035_seguimiento_demo",
+      "breakpoints": true
     }
   ]
 }

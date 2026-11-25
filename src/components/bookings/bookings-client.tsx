@@ -33,6 +33,7 @@ import { BookingDrawer, type ActResult } from "./booking-drawer";
 import type { Booking } from "./booking-look";
 import { CalendarToolbar } from "./calendar-toolbar";
 import { MonthGrid } from "./month-grid";
+import { PendingList } from "./pending-list";
 import { TimeGrid } from "./time-grid";
 
 /**
@@ -94,6 +95,9 @@ export function BookingsClient({
   const [timezone, setTimezone] = useState(initialTimezone);
   const [weeklyHours, setWeeklyHours] = useState(initialWeeklyHours);
   const [loaded, setLoaded] = useState<Loaded | null>(null);
+  // 082 — Lo que falta por hacer tras las demos, de cualquier fecha.
+  const [pendientes, setPendientes] = useState<Booking[]>([]);
+  const [verPendientes, setVerPendientes] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [showCancelled, setShowCancelled] = useState(false);
@@ -158,9 +162,24 @@ export function BookingsClient({
     setLoaded({ key, bookings: data.bookings, truncated: Boolean(data.truncated) });
   }, []);
 
+  const cargarPendientes = useCallback(async () => {
+    const res = await fetch("/api/bookings?pendientes=1").catch(() => null);
+    const data = res?.ok
+      ? ((await res.json().catch(() => null)) as { bookings: Booking[] } | null)
+      : null;
+    if (data) setPendientes(data.bookings);
+  }, []);
+
   const reload = useCallback(async () => {
-    if (rangeRef.current) await load(rangeRef.current);
-  }, [load]);
+    await Promise.all([
+      rangeRef.current ? load(rangeRef.current) : undefined,
+      cargarPendientes(),
+    ]);
+  }, [load, cargarPendientes]);
+
+  useEffect(() => {
+    void cargarPendientes();
+  }, [cargarPendientes]);
 
   useEffect(() => {
     if (rangeKey) void load(rangeKey);
@@ -211,7 +230,9 @@ export function BookingsClient({
   }, [all, timezone, range, showTests]);
 
   const selected = selectedId
-    ? (all.find((b) => b.id === selectedId) ?? (snapshot?.id === selectedId ? snapshot : null))
+    ? (all.find((b) => b.id === selectedId) ??
+      pendientes.find((b) => b.id === selectedId) ??
+      (snapshot?.id === selectedId ? snapshot : null))
     : null;
 
   function select(b: Booking) {
@@ -237,6 +258,7 @@ export function BookingsClient({
   }
 
   function changeView(next: CalendarView) {
+    setVerPendientes(false);
     if (next === "lista" && view !== "lista") {
       setListTo(addDaysISO(anchor, LIST_DEFAULT_DAYS - 1));
     }
@@ -246,6 +268,7 @@ export function BookingsClient({
   }
 
   function goToday() {
+    setVerPendientes(false);
     if (!today || !view || !range) return;
     if (view === "lista") setListTo(addDaysISO(today, daysBetween(range.from, range.to)));
     setAnchor(today);
@@ -253,6 +276,7 @@ export function BookingsClient({
   }
 
   function shift(dir: 1 | -1) {
+    setVerPendientes(false);
     if (!view) return;
     const next = shiftRange(view, anchor, dir, listTo);
     setAnchor(next.anchor);
@@ -330,7 +354,10 @@ export function BookingsClient({
         loading={loading}
         onToday={goToday}
         onShift={shift}
-        onJump={setAnchor}
+        onJump={(day) => {
+          setVerPendientes(false);
+          setAnchor(day);
+        }}
         onView={changeView}
         onListRange={changeListRange}
         onBlock={() => openBlock()}
@@ -345,6 +372,9 @@ export function BookingsClient({
             timezone={timezone}
             showCancelled={showCancelled}
             showTests={showTests}
+            pendientes={pendientes.length}
+            verPendientes={verPendientes}
+            onVerPendientes={() => setVerPendientes((v) => !v)}
             onShowCancelled={(next) => {
               setShowCancelled(next);
               writePref(CANCELLED_KEY, next ? "1" : "0");
@@ -380,7 +410,15 @@ export function BookingsClient({
           )}
 
           <div className="flex min-h-0 flex-1 flex-col px-2 pb-2 sm:px-4 sm:pb-4">
-            {view === "dia" || view === "semana" ? (
+            {verPendientes ? (
+              <PendingList
+                bookings={pendientes}
+                timezone={timezone}
+                today={today}
+                selectedId={selectedId}
+                onSelect={select}
+              />
+            ) : view === "dia" || view === "semana" ? (
               <TimeGrid
                 days={days}
                 bookings={visible}
@@ -427,6 +465,7 @@ export function BookingsClient({
             nowMs={now ?? Date.now()}
             onClose={closeDrawer}
             onAct={(body) => act(selected, body)}
+            onSaved={reload}
             onRescheduled={(startUtc) => reveal(dayIsoInTz(new Date(startUtc), timezone))}
           />
         )}
@@ -459,6 +498,9 @@ function StatusBar({
   timezone,
   showCancelled,
   showTests,
+  pendientes,
+  verPendientes,
+  onVerPendientes,
   onShowCancelled,
   onShowTests,
 }: {
@@ -466,6 +508,9 @@ function StatusBar({
   timezone: string;
   showCancelled: boolean;
   showTests: boolean;
+  pendientes: number;
+  verPendientes: boolean;
+  onVerPendientes: () => void;
   onShowCancelled: (next: boolean) => void;
   onShowTests: (next: boolean) => void;
 }) {
@@ -488,6 +533,17 @@ function StatusBar({
       </span>
       <Legend />
       <div className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-1.5">
+        <button
+          type="button"
+          aria-pressed={verPendientes}
+          onClick={onVerPendientes}
+          className={cn(
+            "rounded-full border px-3 py-1 font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-soft",
+            verPendientes ? "border-brand bg-brand-tint text-brand-text" : "text-text-2 hover:bg-accent"
+          )}
+        >
+          Por hacer {pendientes}
+        </button>
         {(counts.tests > 0 || showTests) && (
           <div className="flex items-center gap-2">
             <Switch

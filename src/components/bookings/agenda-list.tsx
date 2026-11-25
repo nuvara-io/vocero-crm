@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { AlertTriangle, CalendarDays, Sparkles, Video } from "lucide-react";
 import { bookingSegments, hhmm, longDayLabel, spanLabel, type DateRange } from "@/lib/time/calendar";
+import { PASO_LABEL } from "@/lib/seguimiento-demo";
 import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/ui/empty-state";
 import { STATUS_LABEL, bookingTitle, bookingTone, hasDeliveryIssue, type Booking } from "./booking-look";
@@ -96,7 +97,7 @@ export function AgendaList({
                     <span className="block truncate text-xs text-text-3">
                       {b.kind === "block"
                         ? `Bloqueo · ${b.durationMinutes} min`
-                        : `${b.durationMinutes} min · ${b.source === "ai" ? "Agendó la IA" : "Manual"}${b.isTest ? " · Prueba" : ""}`}
+                        : `${b.durationMinutes} min · ${b.source === "ai" ? "Agendó la IA" : "Manual"}${b.isTest ? " · Prueba" : ""}${b.siguiente ? ` · ${PASO_LABEL[b.siguiente.paso]}${b.siguiente.hecho ? " (hecho)" : ""}` : ""}`}
                     </span>
                   </span>
                   {hasDeliveryIssue(b) && (

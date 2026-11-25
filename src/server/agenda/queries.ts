@@ -1,7 +1,8 @@
 import { ocupadoEnGoogle } from "@/server/agenda/google-externos";
-import { asc, desc, eq, gte, lt } from "drizzle-orm";
+import { asc, desc, eq, gte, inArray, isNull, lt, sql } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { scoped } from "@/lib/db/tenant";
+import { PASOS_PENDIENTES, type PasoDemo } from "@/lib/seguimiento-demo";
 import type { DateRange } from "@/lib/time/calendar";
 import { addDaysISO, partsInTz, zonedWallClockToUtc } from "@/lib/time/slots";
 import { getSettings, type CalendarSettings } from "@/server/agenda/settings";
@@ -27,6 +28,8 @@ export type BookingListItem = {
   linkPending: boolean;
   isTest: boolean;
   notes: string | null;
+  /** 082 — Qué sigue después de la demo; null si nadie lo ha anotado. */
+  siguiente?: { paso: PasoDemo; fecha: string | null; hecho: boolean } | null;
 };
 
 /** Tope del listado sin rango: el de siempre, que leen los guiones E2E. */
@@ -119,6 +122,25 @@ export async function listBookingsInRange(
   };
 }
 
+/** 082 — Lo que falta por hacer después de las demos, lo más vencido primero. */
+export async function listPendientesDeDemo(organizationId: string): Promise<BookingListItem[]> {
+  const { timezone } = await getSettings(organizationId);
+  const rows = await baseQuery()
+    .where(
+      scoped(
+        schema.booking.organizationId,
+        organizationId,
+        eq(schema.booking.kind, "session"),
+        eq(schema.booking.isTest, false),
+        inArray(schema.booking.nextStep, [...PASOS_PENDIENTES]),
+        isNull(schema.booking.nextStepDoneAt)
+      )
+    )
+    .orderBy(sql`${schema.booking.nextStepOn} asc nulls last`, asc(schema.booking.scheduledAt))
+    .limit(LIST_LIMIT);
+  return rows.map((r) => toListItem(r, timezone));
+}
+
 function toListItem(r: Row, timezone: string): BookingListItem {
   const scheduledAtUtc = r.booking.scheduledAt.toISOString();
   const parts = partsInTz(scheduledAtUtc, timezone);
@@ -139,6 +161,13 @@ function toListItem(r: Row, timezone: string): BookingListItem {
     linkPending: r.booking.linkPending,
     isTest: r.booking.isTest,
     notes: r.booking.notes,
+    siguiente: r.booking.nextStep
+      ? {
+          paso: r.booking.nextStep,
+          fecha: r.booking.nextStepOn,
+          hecho: r.booking.nextStepDoneAt !== null,
+        }
+      : null,
   };
 }
 

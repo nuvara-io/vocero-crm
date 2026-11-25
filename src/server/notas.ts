@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { asc, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
@@ -70,10 +70,28 @@ export async function listarNotas(quien: Quien, conversationId: string): Promise
   return filas.map((f) => aDto(f.nota, f.autor, quien));
 }
 
+/** 082 — Las notas escritas desde una cita, la más nueva primero. */
+export async function listarNotasDeCita(quien: Quien, bookingId: string): Promise<NotaDto[]> {
+  const filas = await getDb()
+    .select({ nota: schema.conversationNote, autor: schema.user.name })
+    .from(schema.conversationNote)
+    .leftJoin(schema.user, eq(schema.user.id, schema.conversationNote.authorUserId))
+    .where(
+      scoped(
+        schema.conversationNote.organizationId,
+        quien.organizationId,
+        eq(schema.conversationNote.bookingId, bookingId)
+      )
+    )
+    .orderBy(desc(schema.conversationNote.createdAt));
+  return filas.map((f) => aDto(f.nota, f.autor, quien));
+}
+
 export async function crearNota(
   quien: Quien,
   conversationId: string,
-  texto: string
+  texto: string,
+  bookingId: string | null = null
 ): Promise<NotaDto> {
   await conversacionDeLaOrganizacion(quien.organizationId, conversationId);
   const [autor] = await getDb()
@@ -89,6 +107,7 @@ export async function crearNota(
       conversationId,
       authorUserId: quien.userId,
       texto,
+      bookingId,
     })
     .returning();
   const dto = aDto(fila!, autor?.name ?? null, quien);

@@ -941,6 +941,14 @@ export const booking = pgTable(
     /** Conversación del Laboratorio: jamás llama a un conector real. */
     isTest: boolean("is_test").notNull().default(false),
     notes: text("notes"),
+    /**
+     * 082 — Qué sigue después de la demo. Guardarlo NO toca `updated_at`: la
+     * recuperación de «no asistió» lo lee como la hora en que se marcó la cita.
+     */
+    nextStep: text("next_step", { enum: ["seguimiento", "oferta", "reagendar", "no_sigue"] }),
+    /** Día del negocio (AAAA-MM-DD), sin hora. */
+    nextStepOn: text("next_step_on"),
+    nextStepDoneAt: timestamp("next_step_done_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
@@ -1474,9 +1482,12 @@ export const conversationNote = pgTable(
       onDelete: "set null",
     }),
     texto: text("texto").notNull(),
+    /** 082 — La cita de la que habla la nota, si se escribió desde ella. */
+    bookingId: text("booking_id").references(() => booking.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (t) => [
+    index("conversation_note_booking_idx").on(t.bookingId),
     index("conversation_note_conv_idx").on(t.organizationId, t.conversationId, t.createdAt),
   ]
 );

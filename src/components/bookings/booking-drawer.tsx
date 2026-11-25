@@ -15,6 +15,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { BookingFollowup } from "./booking-followup";
 import { bookingTitle, bookingTone, canRetrySync, statusLabel, type Booking } from "./booking-look";
 
 /**
@@ -34,6 +35,7 @@ export function BookingDrawer({
   onClose,
   onAct,
   onRescheduled,
+  onSaved,
 }: {
   booking: Booking;
   timezone: string;
@@ -44,6 +46,8 @@ export function BookingDrawer({
   onAct: (body: Record<string, unknown>) => Promise<ActResult>;
   /** La cita se movió: el calendario salta a su día nuevo. */
   onRescheduled: (startUtc: string) => void;
+  /** 082 — Se guardó una nota o qué sigue: hay que refrescar. */
+  onSaved: () => Promise<void>;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -200,6 +204,10 @@ export function BookingDrawer({
                 </div>
               )}
             </section>
+          )}
+
+          {isSession && !b.isTest && (
+            <BookingFollowup key={b.id} booking={b} timezone={timezone} today={today} onSaved={onSaved} />
           )}
 
           {/* El proveedor falló al crear la reunión. La cita existe; lo único
