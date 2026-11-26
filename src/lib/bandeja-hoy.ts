@@ -86,6 +86,9 @@ export function detalleHoy(
         return { texto: `${PASO_LABEL[porHacer.paso]}${vencido ? " · vencido" : ""}`, urgente: vencido };
       }
       if (sinTildes(c.stageName) === "no asistio") return { texto: "No asistió", urgente: true };
+      if (sinTildes(c.stageName) === "por decidir") {
+        return { texto: `Por decidir · ${dias ?? 0} d`, urgente: (dias ?? 0) >= 4 };
+      }
       return { texto: `Sin respuesta · ${dias ?? 0} d`, urgente: (dias ?? 0) >= 4 };
     case "esperando":
       return proxima

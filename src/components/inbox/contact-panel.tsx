@@ -15,8 +15,7 @@ import {
   Power,
   Trash2,
   UserRound,
-  UserX,
-} from "lucide-react";
+  UserX, Hourglass } from "lucide-react";
 import {
   externalAnswerLabel,
   externalAnswering,
@@ -41,7 +40,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { FichaPanel } from "@/components/ficha-panel";
 import { DeleteConversationDialog } from "./delete-conversation-dialog";
 import { aplicarLote, nombreCorto, useEquipo } from "@/lib/equipo";
-import { esEtapaActivado, estadoDeChat } from "@/lib/filtros-bandeja";
+import { esEtapaActivado, esEtapaPorDecidir, estadoDeChat } from "@/lib/filtros-bandeja";
 import { formatMoneyCents } from "@/lib/money";
 import { ActivarDialog } from "./activar-dialog";
 import { EstadoChip } from "./estado-chip";
@@ -498,10 +497,31 @@ export function ContactPanel({
                 </Button>
               </div>
             ) : (
-              <Button size="sm" className="w-full" onClick={() => setActivando(true)}>
-                <BadgeCheck className="h-4 w-4" strokeWidth={1.8} />
-                Marcar activado
-              </Button>
+              <div className="flex gap-2">
+                {/* 084 — Ya vio la demo: falta su decisión. Un clic desde el chat. */}
+                {(() => {
+                  const porDecidir = stages.find((s) => esEtapaPorDecidir(s.name));
+                  if (!porDecidir) return null;
+                  const ya = porDecidir.id === currentStageId;
+                  return (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="flex-1"
+                      disabled={ya}
+                      onClick={() => void moveToStage(porDecidir.id)}
+                      title="Ya tuvo la demo: hay que recontactarlo para saber si se activa"
+                    >
+                      <Hourglass className="h-4 w-4" strokeWidth={1.8} />
+                      {ya ? "Por decidir" : "Pasar a Por decidir"}
+                    </Button>
+                  );
+                })()}
+                <Button size="sm" className="flex-1" onClick={() => setActivando(true)}>
+                  <BadgeCheck className="h-4 w-4" strokeWidth={1.8} />
+                  Marcar activado
+                </Button>
+              </div>
             )}
             {avisoActivado && <p className="mt-2 text-xs text-success-text">{avisoActivado}</p>}
             {enlace && (

@@ -16,7 +16,7 @@ import { sendTemplate } from "@/server/whatsapp/templates";
  * y, si no responde, un segundo mensaje al día.
  */
 
-export const ETAPAS_DEMO = ["Demo hecha", "No asistió", "Seguimiento"] as const;
+export const ETAPAS_DEMO = ["Demo hecha", "Por decidir", "No asistió", "Seguimiento"] as const;
 
 /** Pasos del seguimiento de no asistió en `followup_send` (no chocan con 0–3). */
 const PASO_NO_ASISTIO_1 = 101;
@@ -35,7 +35,7 @@ const clave = (nombre: string) =>
     .toLowerCase();
 
 /**
- * Las tres etapas, justo después de «Demo agendada» (o de la última etapa
+ * Las etapas de demo, justo después de «Demo agendada» (o de la última etapa
  * abierta si no existe). Re-ejecutable: no duplica por nombre.
  */
 export async function asegurarEtapasDeDemo(organizationId: string): Promise<Map<string, Stage>> {
@@ -48,28 +48,44 @@ export async function asegurarEtapasDeDemo(organizationId: string): Promise<Map<
   const porNombre = new Map(actuales.map((s) => [clave(s.name), s]));
   const faltan = ETAPAS_DEMO.filter((n) => !porNombre.has(clave(n)));
   if (faltan.length > 0) {
-    const ancla =
-      porNombre.get("demo agendada") ?? [...actuales].reverse().find((s) => s.kind === "open") ?? actuales[0];
-    const desde = (ancla?.position ?? -1) + 1;
+    // 084 — Cada etapa que falta entra justo después de la anterior de la
+    // lista que ya exista («Por decidir» tras «Demo hecha»), o de «Demo
+    // agendada» si no hay ninguna.
+    const orden = [...actuales];
+    const ultimaAbierta = [...actuales].reverse().find((s) => s.kind === "open") ?? actuales[actuales.length - 1];
     await db.transaction(async (tx) => {
-      for (const s of actuales) {
-        if (s.position >= desde) {
-          await tx
-            .update(schema.pipelineStage)
-            .set({ position: s.position + faltan.length })
-            .where(eq(schema.pipelineStage.id, s.id));
-        }
-      }
-      let pos = desde;
-      for (const nombre of ETAPAS_DEMO) {
+      for (const [i, nombre] of ETAPAS_DEMO.entries()) {
         if (porNombre.has(clave(nombre))) continue;
-        await tx.insert(schema.pipelineStage).values({
+        const previa = ETAPAS_DEMO.slice(0, i)
+          .reverse()
+          .map((n) => porNombre.get(clave(n)))
+          .find(Boolean);
+        const ancla = previa ?? porNombre.get("demo agendada") ?? ultimaAbierta;
+        const idx = ancla ? orden.findIndex((s) => s.id === ancla.id) + 1 : orden.length;
+        const nueva = {
           id: newId("stage"),
           organizationId,
           name: nombre,
-          position: pos++,
+          position: 0,
+          kind: "open" as const,
+          requiresBooking: false,
+          createdAt: new Date(),
+        } as Stage;
+        orden.splice(idx, 0, nueva);
+        porNombre.set(clave(nombre), nueva);
+        await tx.insert(schema.pipelineStage).values({
+          id: nueva.id,
+          organizationId,
+          name: nombre,
+          position: idx,
           kind: "open",
         });
+      }
+      // Posiciones consecutivas en el orden nuevo.
+      for (const [pos, s] of orden.entries()) {
+        if (s.position !== pos) {
+          await tx.update(schema.pipelineStage).set({ position: pos }).where(eq(schema.pipelineStage.id, s.id));
+        }
       }
     });
   }

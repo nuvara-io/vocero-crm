@@ -64,3 +64,15 @@ describe("083 — vista «Hoy» de la bandeja", () => {
     expect(agendaDeChat(null, "otra|2026-11-26", "America/Bogota")).toBeNull();
   });
 });
+
+describe("084 — Por decidir", () => {
+  it("demo hecha y sin decisión: espera 2 días y luego pide recontactar; nunca se duerme", () => {
+    expect(g({ stageName: "Por decidir", lastMessageAt: haceDias(1) })).toBe("esperando");
+    expect(g({ stageName: "Por decidir", lastMessageAt: haceDias(3) })).toBe("seguimiento");
+    expect(g({ stageName: "Por decidir", lastMessageAt: haceDias(20) })).toBe("seguimiento");
+    expect(detalleHoy(c({ stageName: "Por decidir", lastMessageAt: haceDias(5) }), "seguimiento", hoy, ahora)).toEqual({
+      texto: "Por decidir · 5 d",
+      urgente: true,
+    });
+  });
+});

@@ -100,7 +100,7 @@ const clave = (s: string | null) =>
     .toLowerCase();
 
 /** Orden de las etapas de demo para agruparlas en la vista. */
-export const ETAPAS_DE_DEMO = ["demo agendada", "demo hecha", "no asistio", "seguimiento"] as const;
+export const ETAPAS_DE_DEMO = ["demo agendada", "demo hecha", "por decidir", "no asistio", "seguimiento"] as const;
 const ETAPAS_DE_CLIENTE = ["registrado", "activado", "cliente"];
 
 export function esCerrado(c: ParaVista): boolean {
@@ -200,6 +200,11 @@ export function estadoDeChat(c: ParaEstado, ahora: Date): EstadoChat {
   if (etapa === "no asistio" || pideSeguimiento(c, DIAS_RECONTACTAR, ahora)) return "recontactar";
   if (esDemo(c)) return "en_demo";
   return "esperando";
+}
+
+/** 084 — ¿Es «Por decidir»? (demo hecha, falta su decisión). */
+export function esEtapaPorDecidir(nombre: string | null): boolean {
+  return clave(nombre) === "por decidir";
 }
 
 /** ¿Esta etapa es la de «Activado»? (sin importar tildes ni mayúsculas). */
