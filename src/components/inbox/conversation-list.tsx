@@ -1,9 +1,8 @@
 "use client";
 
 import { Fragment, useEffect, useRef, useState } from "react";
-import { Check, CheckSquare, Clock3, Inbox, Megaphone, SlidersHorizontal, Search, Sparkles, UserCheck, UserRound, X } from "lucide-react";
+import { Check, CheckSquare, ChevronRight, Clock3, Inbox, SlidersHorizontal, Search, Sparkles, X } from "lucide-react";
 import type { ConversationDto } from "@/lib/types";
-import { etiquetaDeOrigen, titularDeOrigen } from "@/lib/anuncios";
 import { CHANNEL_LABEL, type Channel } from "@/lib/channels";
 import { ChannelBadge } from "@/components/channel-badge";
 import { matchesQuery } from "@/lib/search";
@@ -21,7 +20,6 @@ import {
   diasDesde,
   enVista,
   estadoDeChat,
-  ESTADOS_CHAT,
   etiquetaVence,
   ordenDeGrupo,
   pideSeguimiento,
@@ -33,24 +31,8 @@ import { nombreCorto, useEquipo } from "@/lib/equipo";
 import { LoteBar } from "./lote-bar";
 import { EstadoChip } from "./estado-chip";
 import { MOTIVO_PERFIL_LABEL, type MotivoPerfil } from "@/lib/perfil";
-
-const sinTildesMin = (t: string) =>
-  t
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .trim()
-    .toLowerCase();
-
-/* Puntos de etapa: los tokens del tema, no hex copiados del tema claro —
-   así siguen al acento white-label y se recalculan en oscuro. */
-const STAGE_DOT: Record<string, string> = {
-  Nuevo: "var(--text-3)",
-  "En conversación": "var(--accent)",
-  Interesado: "var(--warning)",
-  Cliente: "var(--success)",
-  Perdido: "var(--danger)",
-};
-const STAGE_DOT_FALLBACK = "var(--text-3)";
+import { GRUPOS_HOY, detalleHoy, grupoHoy, type GrupoHoy } from "@/lib/bandeja-hoy";
+import { addDaysISO, dayIsoInTz } from "@/lib/time/slots";
 
 /**
  * Foco por teclado de chips y selector: el anillo de `ui/button`, acento
@@ -107,6 +89,7 @@ function InboxEmptyState({
 
 export function ConversationList({
   conversations: conversationsProp,
+  timezone,
   channels,
   selectedId,
   onSelect,
@@ -114,6 +97,8 @@ export function ConversationList({
   onListaCambiada,
 }: {
   conversations: ConversationDto[] | null;
+  /** 083 — Zona del negocio; sin ella, la del navegador. */
+  timezone?: string | null;
   /** Canales encendidos en esta instancia (ADR-001). */
   channels: readonly Channel[];
   selectedId: string | null;
@@ -126,7 +111,11 @@ export function ConversationList({
   // 052 (enmienda) — Pestañas y un botón «Filtrar» con lo demás. 067 suma
   // «Archivadas»: lo archivado no sale en las otras dos.
   // 075 — Vistas por lo que toca hacer (antes «Todas | No leídas | Archivadas»).
-  const [vista, setVista] = useState<VistaBandeja>("todas");
+  // 083 — «Hoy» es la vista de entrada: lo que toca hacer, por grupos.
+  const [vista, setVista] = useState<VistaBandeja>("hoy");
+  const [plegados, setPlegados] = useState<Set<GrupoHoy>>(
+    () => new Set(GRUPOS_HOY.filter((g) => g.plegado).map((g) => g.id))
+  );
   const [soloNoLeidas, setSoloNoLeidas] = useState(false);
   // 067 — Responsable ("all" | "none" | userId) y días de seguimiento (0 = sin filtro).
   const [responsable, setResponsable] = useState<string>("all");
@@ -239,14 +228,50 @@ export function ConversationList({
   );
   const enLaVista = (v: VistaBandeja) =>
     filtrado.filter((c) => enVista(c, v) && (!soloNoLeidas || c.unreadCount > 0));
-  // En «En demo» y «Clientes» la lista va agrupada por etapa (orden estable:
+  // 083 — «Hoy»: cada chat en su grupo; los que no tocan hoy no salen.
+  const tz = timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const hoy = dayIsoInTz(ahora, tz);
+  const manana = addDaysISO(hoy, 1);
+  const grupoDe = new Map<string, GrupoHoy>();
+  for (const c of filtrado) {
+    const g = grupoHoy(c, hoy, manana, ahora);
+    if (g) grupoDe.set(c.id, g);
+  }
+  const ordenHoy = (c: ConversationDto) => {
+    const g = GRUPOS_HOY.findIndex((x) => x.id === grupoDe.get(c.id));
+    // Las demos, por hora; lo demás conserva lo más reciente arriba.
+    const t = grupoDe.get(c.id) === "demos" ? Date.parse(c.agenda?.proxima?.startUtc ?? "") : 0;
+    return g * 1e13 + (Number.isNaN(t) ? 0 : t / 1e3);
+  };
+  // En «Por etapa» y «Clientes» la lista va agrupada por etapa (orden estable:
   // dentro de cada etapa sigue lo más reciente arriba).
-  const agrupar = vista === "demo" || vista === "clientes";
-  const visible = agrupar
-    ? [...enLaVista(vista)].sort((a, b) => ordenDeGrupo(a.stageName) - ordenDeGrupo(b.stageName))
-    : enLaVista(vista);
+  const agrupar = vista === "etapa" || vista === "demo" || vista === "clientes";
+  const enHoy = (v: VistaBandeja) =>
+    v === "hoy" ? enLaVista(v).filter((c) => grupoDe.has(c.id)) : enLaVista(v);
+  const lista =
+    vista === "hoy"
+      ? [...enHoy("hoy")].sort((a, b) => ordenHoy(a) - ordenHoy(b))
+      : agrupar
+        ? [...enLaVista(vista)].sort((a, b) => ordenDeGrupo(a.stageName) - ordenDeGrupo(b.stageName))
+        : enLaVista(vista);
+  // Un grupo plegado deja su encabezado y esconde sus filas.
+  const visible = vista === "hoy" ? lista.filter((c) => !plegados.has(grupoDe.get(c.id)!)) : lista;
+  const encabezados = vista === "hoy" ? GRUPOS_HOY.filter((g) => lista.some((c) => grupoDe.get(c.id) === g.id)) : [];
   visibleRef.current = visible.map((c) => c.id);
-  const pestanas = VISTAS_BANDEJA.map((v) => ({ id: v.id, label: v.label, count: enLaVista(v.id).length }))
+  function plegar(g: GrupoHoy) {
+    setPlegados((prev) => {
+      const next = new Set(prev);
+      if (next.has(g)) next.delete(g);
+      else next.add(g);
+      return next;
+    });
+  }
+  const pestanas = VISTAS_BANDEJA.map((v) => ({
+    id: v.id,
+    label: v.label,
+    // En «Hoy» los dormidos no cuentan: el número es lo que toca atender.
+    count: v.id === "hoy" ? enHoy("hoy").filter((c) => grupoDe.get(c.id) !== "dormidos").length : enLaVista(v.id).length,
+  }))
     // 078 — «¿Fuera de perfil?» solo aparece cuando hay algo que revisar.
     .filter((p) => p.id !== "revisar_perfil" || p.count > 0 || vista === "revisar_perfil");
   const nombreResponsable =
@@ -296,6 +321,132 @@ export function ConversationList({
     if (inputRef.current) inputRef.current.value = "";
     setQuery("");
     inputRef.current?.focus();
+  }
+
+  /**
+   * 083 — Una fila en dos renglones: nombre y hora; una sola etiqueta y la
+   * vista previa. El anuncio, la etapa y la atención humana viven en el panel
+   * del chat: en la lista solo va lo que dice qué hacer.
+   */
+  function fila(c: ConversationDto) {
+    const unread = c.unreadCount > 0;
+    const active = selectedId === c.id;
+    const grupo = grupoDe.get(c.id) ?? null;
+    const detalle = vista === "hoy" && grupo ? detalleHoy(c, grupo, hoy, ahora) : null;
+    const estado = estadoDeChat(c, ahora);
+    const dias = diasDesde(c.lastMessageAt, ahora);
+    const borrador = leerBorrador("responder", c.id);
+    return (
+      <li key={c.id} className="relative border-b border-border">
+        <button
+          onClick={() => (seleccionando ? alternar(c.id) : onSelect(c.id))}
+          // 055 — Cuál está abierta, para Alt+J/K y los lectores de pantalla.
+          aria-current={active ? "true" : undefined}
+          aria-pressed={seleccionando ? seleccion.has(c.id) : undefined}
+          className={cn(
+            "flex w-full items-center gap-2.5 px-4 py-[var(--row-py)] text-left transition-colors",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+            active ? "bg-[var(--bg-active)]" : "hover:bg-row-hover"
+          )}
+        >
+          {seleccionando && (
+            <span
+              aria-hidden
+              className={cn(
+                "flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[6px] border-[1.5px] transition-colors",
+                seleccion.has(c.id) ? "border-primary bg-primary text-primary-foreground" : "border-border-strong bg-card"
+              )}
+            >
+              {seleccion.has(c.id) && <Check className="h-3 w-3" strokeWidth={3} />}
+            </span>
+          )}
+          <span className="relative shrink-0">
+            <ContactAvatar name={c.contact.name} seed={c.contact.id} size="md" />
+            {c.windowOpen && (
+              <span className="absolute bottom-0 right-0 h-[10px] w-[10px] rounded-full border-2 border-background bg-success" />
+            )}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="flex items-center justify-between gap-2">
+              <span className="flex min-w-0 items-center gap-1.5">
+                {multiChannel && <ChannelBadge channel={c.channel} />}
+                <span className={cn("truncate text-sm", unread ? "font-semibold" : "font-medium")}>
+                  {c.contact.name}
+                </span>
+                {c.assignee && (
+                  <span
+                    title={`${c.assignee.name} hace el seguimiento`}
+                    className="shrink-0 rounded-full bg-brand-tint px-1.5 text-[10.5px] font-semibold text-brand-text"
+                  >
+                    {nombreCorto(c.assignee.name)}
+                  </span>
+                )}
+              </span>
+              <span
+                className={cn(
+                  "shrink-0 font-mono text-[10.5px] tracking-[0.02em]",
+                  unread ? "font-semibold text-brand-ink" : "text-text-3"
+                )}
+              >
+                {formatTime(c.lastMessageAt)}
+              </span>
+            </span>
+            <span className="mt-0.5 flex items-center gap-1.5">
+              {detalle ? (
+                <span
+                  className={cn(
+                    "shrink-0 rounded-full border px-1.5 py-px text-[10.5px] font-semibold",
+                    detalle.urgente
+                      ? "border-danger-soft bg-danger-tint text-danger-text"
+                      : "border-border-strong bg-chip text-text-2"
+                  )}
+                >
+                  {detalle.texto}
+                </span>
+              ) : vista !== "hoy" ? (
+                <EstadoChip
+                  estado={estado}
+                  detalle={estado === "recontactar" && dias !== null && dias >= 1 ? `${dias} d` : null}
+                  className="shrink-0 px-1.5 py-px text-[10.5px]"
+                />
+              ) : null}
+              {porVencer(c) && (
+                // 052 — Pasada la ventana, solo con plantilla: se avisa antes.
+                <span data-vence title={etiquetaVence(c.windowRemainingMs)} className="shrink-0 text-warning-text">
+                  <Clock3 className="h-3.5 w-3.5" strokeWidth={1.8} />
+                </span>
+              )}
+              {c.perfil?.estado === "sospecha" && (
+                <span
+                  className="shrink-0 rounded-full border border-warning-soft bg-warning-tint px-1.5 py-px text-[10.5px] font-semibold text-warning-text"
+                  title={
+                    c.perfil.motivo && MOTIVO_PERFIL_LABEL[c.perfil.motivo as MotivoPerfil]
+                      ? MOTIVO_PERFIL_LABEL[c.perfil.motivo as MotivoPerfil]
+                      : "El filtro cree que no busca un software contable"
+                  }
+                >
+                  ¿Fuera de perfil?
+                </span>
+              )}
+              <span className={cn("min-w-0 flex-1 truncate text-[12.5px]", unread ? "font-medium text-text-2" : "text-text-3")}>
+                {borrador ? (
+                  <>
+                    <span className="font-semibold text-brand-ink">Borrador:</span> {borrador.replace(/\s+/g, " ")}
+                  </>
+                ) : (
+                  previewText(c.preview)
+                )}
+              </span>
+              {unread && (
+                <span className="flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full bg-brand px-1.5 text-[10.5px] font-semibold text-brand-fg">
+                  {c.unreadCount}
+                </span>
+              )}
+            </span>
+          </span>
+        </button>
+      </li>
+    );
   }
 
   return (
@@ -588,7 +739,7 @@ export function ConversationList({
           <p className="p-6 text-center text-xs text-text-3">Cargando…</p>
         ) : conversations.length === 0 ? (
           <InboxEmptyState onSeeded={onSeeded} channels={channels} />
-        ) : visible.length === 0 ? (
+        ) : visible.length === 0 && encabezados.length === 0 ? (
           <p className="p-6 text-center text-xs text-text-3">
             {/* 028: un canal en el que nadie ha escrito no es una búsqueda fallida. */}
             {inbox !== "all" &&
@@ -597,186 +748,57 @@ export function ConversationList({
             nFiltros === 0 &&
             !conversations.some((c) => c.channel === inbox)
               ? `Nadie ha escrito por ${CHANNEL_LABEL[inbox]} todavía.`
-              : "Sin resultados para este filtro."}
+              : vista === "hoy" && !query && nFiltros === 0
+                ? "Nada pendiente por hoy."
+                : "Sin resultados para este filtro."}
           </p>
         ) : (
           <ul>
-            {visible.map((c, i) => {
-              const unread = c.unreadCount > 0;
-              const active = selectedId === c.id;
-              const grupo = agrupar && (i === 0 || visible[i - 1]!.stageName !== c.stageName);
-              return (
-                <Fragment key={c.id}>
-                {grupo && (
-                  <li
-                    aria-hidden
-                    className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-subtle/95 px-4 py-1.5 backdrop-blur"
-                  >
-                    <span className="kicker text-text-2">{c.stageName ?? "Sin etapa"}</span>
-                    <span className="font-mono text-[11px] text-text-3">
-                      {visible.filter((x) => x.stageName === c.stageName).length}
-                    </span>
-                  </li>
-                )}
-                <li className="relative border-b border-border">
-                  <button
-                    onClick={() => (seleccionando ? alternar(c.id) : onSelect(c.id))}
-                    // 055 — Cuál está abierta, para Alt+J/K y los lectores de pantalla.
-                    aria-current={active ? "true" : undefined}
-                    aria-pressed={seleccionando ? seleccion.has(c.id) : undefined}
-                    className={cn(
-                      "flex w-full items-start gap-[11px] px-4 py-[var(--row-py)] text-left transition-colors",
-                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-                      active ? "bg-[var(--bg-active)]" : "hover:bg-row-hover"
-                    )}
-                  >
-                    {seleccionando && (
-                      <span
-                        aria-hidden
-                        className={cn(
-                          "mt-3 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[6px] border-[1.5px] transition-colors",
-                          seleccion.has(c.id)
-                            ? "border-primary bg-primary text-primary-foreground"
-                            : "border-border-strong bg-card"
-                        )}
-                      >
-                        {seleccion.has(c.id) && <Check className="h-3 w-3" strokeWidth={3} />}
-                      </span>
-                    )}
-                    <span className="relative shrink-0">
-                      <ContactAvatar name={c.contact.name} seed={c.contact.id} size="lg" />
-                      {c.windowOpen && (
-                        <span className="absolute bottom-0 right-0 h-[11px] w-[11px] rounded-full border-[2.5px] border-background bg-success" />
+            {vista === "hoy"
+              ? encabezados.map((g) => {
+                  const filas = lista.filter((c) => grupoDe.get(c.id) === g.id);
+                  const abierto = !plegados.has(g.id);
+                  return (
+                    <Fragment key={g.id}>
+                      <li className="sticky top-0 z-10 border-b border-border bg-subtle/95 backdrop-blur">
+                        <button
+                          type="button"
+                          onClick={() => plegar(g.id)}
+                          aria-expanded={abierto}
+                          className={cn("flex w-full items-center gap-1.5 px-4 py-1.5 text-left", FOCO_SEPARADO)}
+                        >
+                          <ChevronRight
+                            aria-hidden
+                            className={cn("h-3.5 w-3.5 text-text-3 transition-transform", abierto && "rotate-90")}
+                            strokeWidth={2}
+                          />
+                          <span className="kicker flex-1 text-text-2">{g.label}</span>
+                          <span className="font-mono text-[11px] text-text-3">{filas.length}</span>
+                        </button>
+                      </li>
+                      {abierto && filas.map((c) => fila(c))}
+                    </Fragment>
+                  );
+                })
+              : visible.map((c, i) => {
+                  const grupo = agrupar && (i === 0 || visible[i - 1]!.stageName !== c.stageName);
+                  return (
+                    <Fragment key={c.id}>
+                      {grupo && (
+                        <li
+                          aria-hidden
+                          className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-subtle/95 px-4 py-1.5 backdrop-blur"
+                        >
+                          <span className="kicker text-text-2">{c.stageName ?? "Sin etapa"}</span>
+                          <span className="font-mono text-[11px] text-text-3">
+                            {visible.filter((x) => x.stageName === c.stageName).length}
+                          </span>
+                        </li>
                       )}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="flex items-center justify-between gap-2">
-                        <span className="flex min-w-0 items-center gap-1.5">
-                          {multiChannel && <ChannelBadge channel={c.channel} />}
-                          <span
-                            className={cn(
-                              "truncate text-sm",
-                              unread ? "font-semibold" : "font-medium"
-                            )}
-                          >
-                            {c.contact.name}
-                          </span>
-                        </span>
-                        <span
-                          className={cn(
-                            "shrink-0 font-mono text-[10.5px] tracking-[0.02em]",
-                            unread ? "font-semibold text-brand-ink" : "text-text-3"
-                          )}
-                        >
-                          {formatTime(c.lastMessageAt)}
-                        </span>
-                      </span>
-                      <span className="mt-0.5 flex items-center justify-between gap-2">
-                        <span
-                          className={cn(
-                            "truncate text-[13px]",
-                            unread ? "font-medium text-text-2" : "text-text-3"
-                          )}
-                        >
-                          {(() => {
-                            // 051 — Como WhatsApp: lo que quedó a medias se ve.
-                            const borrador = leerBorrador("responder", c.id);
-                            return borrador ? (
-                              <>
-                                <span className="font-semibold text-brand-ink">Borrador:</span>{" "}
-                                {borrador.replace(/\s+/g, " ")}
-                              </>
-                            ) : (
-                              previewText(c.preview)
-                            );
-                          })()}
-                        </span>
-                        {unread && (
-                          <span className="flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full bg-brand px-1.5 text-[10.5px] font-semibold text-brand-fg">
-                            {c.unreadCount}
-                          </span>
-                        )}
-                      </span>
-                      <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                        {c.assignee && (
-                          <span
-                            className="inline-flex items-center gap-1 rounded-full border border-brand-soft bg-brand-tint px-2 py-0.5 text-[11px] font-medium text-brand-text"
-                            title={`${c.assignee.name} hace el seguimiento`}
-                          >
-                            <UserCheck className="h-3 w-3" strokeWidth={1.8} />
-                            {nombreCorto(c.assignee.name)}
-                          </span>
-                        )}
-                        {(() => {
-                          // 076 — El estado en color va primero: es lo que dice qué hacer.
-                          const estado = estadoDeChat(c, ahora);
-                          const dias = diasDesde(c.lastMessageAt, ahora);
-                          return (
-                            <EstadoChip
-                              estado={estado}
-                              detalle={estado === "recontactar" && dias !== null && dias >= 1 ? `${dias} d` : null}
-                            />
-                          );
-                        })()}
-                        {c.perfil?.estado === "sospecha" && (
-                          <span
-                            className="inline-flex items-center gap-1 rounded-full border border-warning-soft bg-warning-tint px-2 py-0.5 text-[11px] font-medium text-warning-text"
-                            title="El filtro cree que no busca un software contable. Revísalo en el chat."
-                          >
-                            ¿Fuera de perfil?
-                            {c.perfil.motivo && MOTIVO_PERFIL_LABEL[c.perfil.motivo as MotivoPerfil]
-                              ? ` · ${MOTIVO_PERFIL_LABEL[c.perfil.motivo as MotivoPerfil]}`
-                              : ""}
-                          </span>
-                        )}
-                        {c.stageName &&
-                          // Sin «Registrado · Registrado»: si el estado ya lo dice, la etapa sobra.
-                          sinTildesMin(c.stageName) !== sinTildesMin(ESTADOS_CHAT[estadoDeChat(c, ahora)].label) && (
-                          <span className="inline-flex items-center gap-1.5 rounded-full border border-border-strong bg-chip px-2 py-0.5 text-[11px] font-medium text-text-2">
-                            <span
-                              className="h-[7px] w-[7px] rounded-full"
-                              style={{
-                                background: STAGE_DOT[c.stageName] ?? STAGE_DOT_FALLBACK,
-                              }}
-                            />
-                            {c.stageName}
-                          </span>
-                        )}
-                        {porVencer(c) && (
-                          // 052 — Pasada la ventana, solo con plantilla: se avisa antes.
-                          <span
-                            data-vence
-                            className="inline-flex items-center gap-1 rounded-full border border-warning-soft bg-warning-tint px-2 py-0.5 text-[11px] font-semibold text-warning-text"
-                          >
-                            <Clock3 className="h-3 w-3" strokeWidth={1.8} />
-                            {etiquetaVence(c.windowRemainingMs)}
-                          </span>
-                        )}
-                        {c.handoffAt && (
-                          <span className="inline-flex items-center gap-1 rounded-full border border-warning-soft bg-warning-tint px-2 py-0.5 text-[11px] text-warning-text">
-                            <UserRound className="h-3 w-3" strokeWidth={1.7} />
-                            Atención humana
-                          </span>
-                        )}
-                        {c.anuncio && (
-                          <span
-                            className="inline-flex min-w-0 items-center gap-1 rounded-full border border-info-soft bg-info-tint px-2 py-0.5 text-[11px] text-info-text"
-                            title={titularDeOrigen(c.anuncio.headline, c.anuncio.sourceType)}
-                          >
-                            <Megaphone className="h-3 w-3 shrink-0" strokeWidth={1.7} />
-                            <span className="truncate">
-                              {etiquetaDeOrigen(c.anuncio.sourceType)}
-                              {c.anuncio.headline ? ` · ${c.anuncio.headline}` : ""}
-                            </span>
-                          </span>
-                        )}
-                      </span>
-                    </span>
-                  </button>
-                </li>
-                </Fragment>
-              );
-            })}
+                      {fila(c)}
+                    </Fragment>
+                  );
+                })}
           </ul>
         )}
       </div>

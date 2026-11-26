@@ -61,6 +61,10 @@ export function diasDesde(iso: string | null, ahora: Date): number | null {
  * se ve junto, sin importar la etapa.
  */
 export type VistaBandeja =
+  /** 083 — Lo que toca hoy, agrupado (ver `bandeja-hoy`). */
+  | "hoy"
+  /** 083 — Todo lo abierto, agrupado por etapa del embudo. */
+  | "etapa"
   | "todas"
   | "por_contestar"
   | "esperando"
@@ -70,11 +74,10 @@ export type VistaBandeja =
   /** 078 — Chats que el filtro cree fuera de perfil, para decidir de una. */
   | "revisar_perfil";
 
+/** 083 — Las pestañas: «Hoy» manda; las vistas viejas siguen para los filtros. */
 export const VISTAS_BANDEJA: { id: VistaBandeja; label: string }[] = [
-  { id: "todas", label: "Todas" },
-  { id: "por_contestar", label: "Por contestar" },
-  { id: "esperando", label: "Esperando" },
-  { id: "demo", label: "En demo" },
+  { id: "hoy", label: "Hoy" },
+  { id: "etapa", label: "Por etapa" },
   { id: "clientes", label: "Clientes" },
   { id: "cerrados", label: "Cerrados" },
   { id: "revisar_perfil", label: "¿Fuera de perfil?" },
@@ -112,6 +115,12 @@ export function esDemo(c: ParaVista): boolean {
 
 export function enVista(c: ParaVista, vista: VistaBandeja): boolean {
   switch (vista) {
+    case "hoy":
+      // El grupo exacto lo decide `grupoHoy`; aquí basta con lo abierto.
+      return !esCerrado(c);
+    case "etapa":
+      // Los clientes tienen su pestaña: aquí va el embudo.
+      return !esCerrado(c) && !esCliente(c);
     case "todas":
       return !esCerrado(c);
     case "cerrados":
@@ -132,10 +141,14 @@ export function enVista(c: ParaVista, vista: VistaBandeja): boolean {
 /** En «En demo» y «Clientes» la lista va por etapa: este es el orden del grupo. */
 export function ordenDeGrupo(stageName: string | null): number {
   const k = clave(stageName);
+  const previas = ["nuevo", "prospecto", "en conversacion", "calificado"];
+  const p = previas.indexOf(k);
+  if (p >= 0) return -10 + p;
   const i = (ETAPAS_DE_DEMO as readonly string[]).indexOf(k);
   if (i >= 0) return i;
   const j = ETAPAS_DE_CLIENTE.indexOf(k);
-  return j >= 0 ? 10 + j : 99;
+  // 083 — Una etapa propia del negocio va antes de las de cliente.
+  return j >= 0 ? 10 + j : 5;
 }
 
 /**

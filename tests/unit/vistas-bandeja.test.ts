@@ -8,8 +8,10 @@ const c = (o: Partial<Parameters<typeof enVista>[0]>) => ({
   archivedAt: null as string | null,
   ...o,
 });
-const vistas = (x: Parameters<typeof enVista>[0]) =>
-  VISTAS_BANDEJA.map((v) => v.id).filter((v: VistaBandeja) => enVista(x, v));
+// Las vistas de 075 siguen existiendo para los filtros, aunque 083 dejó como
+// pestañas solo «Hoy», «Por etapa», «Clientes» y «Cerrados».
+const VISTAS_075: VistaBandeja[] = ["todas", "por_contestar", "esperando", "demo", "clientes", "cerrados"];
+const vistas = (x: Parameters<typeof enVista>[0]) => VISTAS_075.filter((v) => enVista(x, v));
 
 describe("075 — vistas de la bandeja", () => {
   it("el cliente habló último: por contestar", () => {
@@ -36,6 +38,14 @@ describe("075 — vistas de la bandeja", () => {
       "Demo hecha",
       "No asistió",
       "Seguimiento",
+    ]);
+  });
+  it("083 — las pestañas son Hoy, Por etapa, Clientes y Cerrados", () => {
+    expect(VISTAS_BANDEJA.map((v) => v.id).filter((v) => v !== "revisar_perfil")).toEqual([
+      "hoy",
+      "etapa",
+      "clientes",
+      "cerrados",
     ]);
   });
 });

@@ -1,3 +1,4 @@
+import type { AgendaDeChat } from "@/lib/bandeja-hoy";
 /** DTOs que viajan por la API interna (lado cliente). */
 
 import type { Channel } from "@/lib/channels";
@@ -48,6 +49,8 @@ export type ConversationDto = {
   lastDirection: "in" | "out" | null;
   /** 078 — Filtro de perfil: `sospecha` = la IA cree que no es cliente. */
   perfil: { estado: "sospecha" | "fuera" | "ok" | null; motivo: string | null } | null;
+  /** 083 — Próxima demo y lo que quedó por hacer, para la vista «Hoy». */
+  agenda?: AgendaDeChat | null;
 };
 
 /** 018 — De qué anuncio llegó un contacto, como lo ve la bandeja. */

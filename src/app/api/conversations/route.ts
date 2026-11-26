@@ -1,4 +1,6 @@
 import { withAuth } from "@/lib/api";
+import { agendaEnabled } from "@/server/agenda/flag";
+import { getSettings } from "@/server/agenda/settings";
 import { listConversations } from "@/server/inbox/queries";
 
 export const dynamic = "force-dynamic";
@@ -11,5 +13,7 @@ export const GET = withAuth(async (session, req: Request) => {
     session.organizationId,
     since && !Number.isNaN(since.getTime()) ? since : undefined
   );
-  return Response.json({ conversations });
+  // 083 — La zona del negocio: «hoy» para la bandeja se cuenta ahí.
+  const timezone = agendaEnabled() ? (await getSettings(session.organizationId)).timezone : null;
+  return Response.json({ conversations, timezone });
 });

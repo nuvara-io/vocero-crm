@@ -4,6 +4,11 @@ import { scoped } from "@/lib/db/tenant";
 import { isWindowOpen, replyWindow, windowRemainingMs } from "@/server/inbox/window";
 import { capabilitiesFor, windowMsFor } from "@/server/channels/capabilities";
 import type { ConversationDto } from "@/lib/types";
+import type { AgendaDeChat } from "@/lib/bandeja-hoy";
+import { PASOS_DEMO, type PasoDemo } from "@/lib/seguimiento-demo";
+import { dayIsoInTz, timeInTz } from "@/lib/time/slots";
+import { agendaEnabled } from "@/server/agenda/flag";
+import { getSettings } from "@/server/agenda/settings";
 
 /**
  * 018 — El anuncio de origen viaja con la conversación. La llave única
@@ -90,6 +95,28 @@ export async function listConversations(
     limit 1
   )`;
 
+  // 083 — Lo de la agenda que pide la vista «Hoy». Por contacto: una cita
+  // agendada a mano puede no tener la conversación puesta.
+  const proximaSql = sql<string | null>`(
+    select to_char(b.scheduled_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"') from booking b
+    where b.organization_id = ${schema.conversation.organizationId}
+      and b.contact_id = ${schema.contact.id}
+      and b.kind = 'session' and b.status = 'agendada' and b.is_test = false
+      and b.scheduled_at > now() - interval '1 hour'
+    order by b.scheduled_at asc
+    limit 1
+  )`;
+  const porHacerSql = sql<string | null>`(
+    select b.next_step || '|' || coalesce(b.next_step_on, '') from booking b
+    where b.organization_id = ${schema.conversation.organizationId}
+      and b.contact_id = ${schema.contact.id}
+      and b.next_step in ('seguimiento', 'oferta', 'reagendar')
+      and b.next_step_done_at is null and b.is_test = false
+    order by b.next_step_on asc nulls first
+    limit 1
+  )`;
+  const timezone = agendaEnabled() ? (await getSettings(organizationId)).timezone : null;
+
   const rows = await db
     .select({
       conversation: schema.conversation,
@@ -101,6 +128,8 @@ export async function listConversations(
       assigneeId: assigneeIdSql,
       assigneeName: assigneeNameSql,
       lastDirection: lastDirectionSql,
+      proxima: proximaSql,
+      porHacer: porHacerSql,
       anuncio: anuncioDeLista,
     })
     .from(schema.conversation)
@@ -132,9 +161,27 @@ export async function listConversations(
         assignee:
           r.assigneeId && r.assigneeName ? { id: r.assigneeId, name: r.assigneeName } : null,
         lastDirection: r.lastDirection === "in" || r.lastDirection === "out" ? r.lastDirection : null,
-      }
+      },
+      timezone ? agendaDeChat(r.proxima, r.porHacer, timezone) : null
     )
   );
+}
+
+/** 083 — Pura: las dos columnas de la agenda a la forma de la bandeja. */
+export function agendaDeChat(
+  proxima: string | null,
+  porHacer: string | null,
+  timezone: string
+): AgendaDeChat | null {
+  const [paso, fecha] = (porHacer ?? "").split("|");
+  const pasoOk = (PASOS_DEMO as readonly string[]).includes(paso ?? "") ? (paso as PasoDemo) : null;
+  if (!proxima && !pasoOk) return null;
+  return {
+    proxima: proxima
+      ? { startUtc: proxima, dia: dayIsoInTz(new Date(proxima), timezone), hora: timeInTz(proxima, timezone) }
+      : null,
+    porHacer: pasoOk ? { paso: pasoOk, fecha: fecha || null } : null,
+  };
 }
 
 function aStageKind(kind: string | null): ConversationDto["stageKind"] {
@@ -205,7 +252,8 @@ export function serializeConversation(
     leadId: null,
     assignee: null,
     lastDirection: null,
-  }
+  },
+  agenda: AgendaDeChat | null = null
 ): ConversationDto {
   const caps = capabilitiesFor(c.channel);
   // 024: la extensión humana solo existe en los canales que la declaran.
@@ -246,6 +294,7 @@ export function serializeConversation(
     archivedAt: contact.archivedAt?.toISOString() ?? null,
     // 078
     perfil: contact.perfilEstado ? { estado: contact.perfilEstado, motivo: contact.perfilMotivo } : null,
+    agenda,
     ...lista,
   };
 }

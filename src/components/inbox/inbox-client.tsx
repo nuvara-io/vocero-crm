@@ -97,6 +97,8 @@ export function InboxClient({
     setConversacionAbierta(selectedId);
     return () => setConversacionAbierta(null);
   }, [selectedId]);
+  // 083 — Zona del negocio, para saber qué es «hoy» en la bandeja.
+  const [timezone, setTimezone] = useState<string | null>(null);
   const lastFetchRef = useRef<string | null>(null);
   const tmpSeq = useRef(0);
   // Los envíos salen en fila: el compositor ya no espera, pero WhatsApp debe
@@ -107,8 +109,9 @@ export function InboxClient({
   const refetchConversations = useCallback(async () => {
     const res = await fetch("/api/conversations").catch(() => null);
     if (!res?.ok) return;
-    const data = (await res.json()) as { conversations: ConversationDto[] };
+    const data = (await res.json()) as { conversations: ConversationDto[]; timezone?: string | null };
     setConversations(data.conversations);
+    if (data.timezone) setTimezone(data.timezone);
     lastFetchRef.current = new Date().toISOString();
     // 064 — El menú y Ctrl+K toman la lista de aquí en vez de pedir otra.
     publicarLista(data.conversations);
@@ -428,6 +431,7 @@ export function InboxClient({
       >
         <ConversationList
           conversations={conversations}
+          timezone={timezone}
           channels={channels}
           selectedId={selectedId}
           onSelect={select}
