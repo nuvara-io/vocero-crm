@@ -5,7 +5,7 @@ import { scoped } from "@/lib/db/tenant";
 import { decidirSeguimiento, secuenciaDeEtapa } from "@/lib/crm-reglas";
 import { festivosDe } from "@/lib/festivos";
 import { horarioLey2300 } from "@/lib/prospeccion";
-import { primerNombre } from "@/lib/respuestas-rapidas";
+import { nombreParaPlantilla } from "@/lib/envios";
 import { countVariables } from "@/lib/templates";
 import { businessTimezone } from "@/server/analytics/period";
 import { ajustesCrm } from "@/server/crm-ajustes";
@@ -99,6 +99,84 @@ async function tandaDeOrganizacion(organizationId: string, ahora: Date): Promise
   const tz = await businessTimezone(organizationId);
   if (!horarioHabil(ahora, tz)) return resumen;
 
+  const { conAncla, hechos } = await candidatasDeSeguimiento(organizationId, seguimiento);
+  resumen.revisadas = conAncla.length;
+  if (conAncla.length === 0) return resumen;
+  const db = getDb();
+
+  const plantillas = await db
+    .select({ id: schema.template.id, body: schema.template.body, status: schema.template.status })
+    .from(schema.template)
+    .where(scoped(schema.template.organizationId, organizationId));
+  const plantilla = new Map(plantillas.map((p) => [p.id, p]));
+
+  let acciones = 0;
+  for (const c of conAncla) {
+    if (acciones >= TOPE_POR_TANDA) break;
+    if (c.prospecto && !horarioLey2300(ahora, tz)) continue;
+    const evaluada = evaluarCandidata(c, hechos, { seguimiento, prospeccion }, ahora);
+    if (!evaluada) continue;
+    const { ancla, decision } = evaluada;
+    if (!decision) continue;
+    acciones++;
+
+    if (decision.accion === "perdido") {
+      // 077 — Al final de la secuencia: Perdido «Nunca contestó» (cuenta en el embudo).
+      const perdida = await primeraEtapaPerdida(organizationId);
+      if (perdida) {
+        await moveLeadToStage({
+          organizationId,
+          leadId: c.leadId,
+          toStageId: perdida,
+          source: "sistema",
+          lossReason: "nunca_contesto",
+        }).catch(() => null);
+      }
+      await registrar(organizationId, c.conversationId, 0, ancla, null, Boolean(perdida), perdida ? null : "No hay etapa perdida");
+      publish(organizationId, { type: "conversation.updated", data: { conversation: { id: c.conversationId } } });
+      resumen.archivadas++;
+      continue;
+    }
+
+    if (decision.accion === "archivar") {
+      await db
+        .update(schema.contact)
+        .set({ archivedAt: ahora, updatedAt: ahora })
+        .where(and(eq(schema.contact.organizationId, organizationId), eq(schema.contact.id, c.contactId)));
+      await registrar(organizationId, c.conversationId, 0, ancla, null, true, null);
+      publish(organizationId, { type: "conversation.updated", data: { conversation: { id: c.conversationId } } });
+      resumen.archivadas++;
+      continue;
+    }
+
+    const p = plantilla.get(decision.templateId);
+    if (!p || p.status !== "approved") {
+      await registrar(organizationId, c.conversationId, decision.paso, ancla, decision.templateId, false, "La plantilla no existe o no está aprobada");
+      resumen.errores++;
+      continue;
+    }
+    const variables = countVariables(p.body) >= 1 ? [nombreParaPlantilla(c.nombre)] : [];
+    try {
+      await sendTemplate({ organizationId, conversationId: c.conversationId, templateId: p.id, variables });
+      await registrar(organizationId, c.conversationId, decision.paso, ancla, p.id, true, null);
+      resumen.enviadas++;
+    } catch (err) {
+      // Se registra igual: un error no se reintenta en bucle cada 15 minutos.
+      await registrar(organizationId, c.conversationId, decision.paso, ancla, p.id, false, err instanceof Error ? err.message.slice(0, 300) : "error");
+      resumen.errores++;
+    }
+  }
+  return resumen;
+}
+
+/**
+ * 085 — Las conversaciones que el seguimiento mira y lo ya hecho con cada una.
+ * La usan la pasada (para enviar) y «Próximos envíos» (para anticipar).
+ */
+export async function candidatasDeSeguimiento(
+  organizationId: string,
+  seguimiento: Awaited<ReturnType<typeof ajustesCrm>>["seguimiento"]
+) {
   const db = getDb();
   // El ancla: el primer mensaje nuestro posterior a su última respuesta. Solo
   // conversaciones donde el cliente escribió alguna vez (un lead real).
@@ -152,8 +230,7 @@ async function tandaDeOrganizacion(organizationId: string, ahora: Date): Promise
     .limit(500);
 
   const conAncla = candidatas.filter((c) => c.ancla);
-  resumen.revisadas = conAncla.length;
-  if (conAncla.length === 0) return resumen;
+  if (conAncla.length === 0) return { conAncla, hechos: [] as { conversationId: string; step: number; anchorAt: Date; createdAt: Date }[] };
 
   const hechos = await db
     .select({
@@ -174,105 +251,64 @@ async function tandaDeOrganizacion(organizationId: string, ahora: Date): Promise
       )
     );
 
-  const plantillas = await db
-    .select({ id: schema.template.id, body: schema.template.body, status: schema.template.status })
-    .from(schema.template)
-    .where(scoped(schema.template.organizationId, organizationId));
-  const plantilla = new Map(plantillas.map((p) => [p.id, p]));
-
-  let acciones = 0;
-  for (const c of conAncla) {
-    if (acciones >= TOPE_POR_TANDA) break;
-    // 077 — Con secuencia por etapa los días cuentan desde lo más reciente:
-    // nuestro mensaje sin respuesta o la entrada a la etapa. Cambiar de etapa
-    // arranca su propia secuencia (otro ancla, otros pasos).
-    const sec = c.prospecto ? { modo: "general" as const } : secuenciaDeEtapa(seguimiento, c.stageId);
-    if (!sec) continue;
-    const conPersona = c.atendido && c.motivoAtencion !== "plantilla";
-    if (!c.prospecto && conPersona && sec.modo !== "etapa") continue;
-    const base = new Date(c.ancla);
-    const entro = c.entroEtapa ? new Date(c.entroEtapa) : null;
-    const ancla = sec.modo === "etapa" && entro && entro > base ? entro : base;
-    const dias = Math.floor((ahora.getTime() - ancla.getTime()) / DIA_MS);
-    const delAncla = hechos.filter(
-      (h) => h.conversationId === c.conversationId && h.anchorAt.getTime() === ancla.getTime() && h.step > 0 && h.step < 100
-    );
-    const pasosHechos = new Set(
-      hechos
-        .filter((h) => h.conversationId === c.conversationId && h.anchorAt.getTime() === ancla.getTime())
-        .map((h) => h.step)
-    );
-    const ultimoEnvio = delAncla.reduce<Date | null>((m, h) => (!m || h.createdAt > m ? h.createdAt : m), null);
-    const diasDesdeUltimo = ultimoEnvio ? Math.floor((ahora.getTime() - ultimoEnvio.getTime()) / DIA_MS) : null;
-    if (c.prospecto && !horarioLey2300(ahora, tz)) continue;
-    const decision =
-      sec.modo === "etapa"
-        ? decidirSeguimiento({
-            ajustes: { enabled: seguimiento.enabled, pasos: sec.secuencia.pasos, archivarDias: sec.secuencia.finalDias },
-            dias,
-            hechos: pasosHechos,
-            final: sec.secuencia.final,
-            diasDesdeUltimo,
-          })
-        : decidirSeguimiento({
-            ajustes: c.prospecto ? prospeccion : seguimiento,
-            dias,
-            hechos: pasosHechos,
-            diasDesdeUltimo,
-          });
-    if (!decision) continue;
-    acciones++;
-
-    if (decision.accion === "perdido") {
-      // 077 — Al final de la secuencia: Perdido «Nunca contestó» (cuenta en el embudo).
-      const perdida = await primeraEtapaPerdida(organizationId);
-      if (perdida) {
-        await moveLeadToStage({
-          organizationId,
-          leadId: c.leadId,
-          toStageId: perdida,
-          source: "sistema",
-          lossReason: "nunca_contesto",
-        }).catch(() => null);
-      }
-      await registrar(organizationId, c.conversationId, 0, ancla, null, Boolean(perdida), perdida ? null : "No hay etapa perdida");
-      publish(organizationId, { type: "conversation.updated", data: { conversation: { id: c.conversationId } } });
-      resumen.archivadas++;
-      continue;
-    }
-
-    if (decision.accion === "archivar") {
-      await db
-        .update(schema.contact)
-        .set({ archivedAt: ahora, updatedAt: ahora })
-        .where(and(eq(schema.contact.organizationId, organizationId), eq(schema.contact.id, c.contactId)));
-      await registrar(organizationId, c.conversationId, 0, ancla, null, true, null);
-      publish(organizationId, { type: "conversation.updated", data: { conversation: { id: c.conversationId } } });
-      resumen.archivadas++;
-      continue;
-    }
-
-    const p = plantilla.get(decision.templateId);
-    if (!p || p.status !== "approved") {
-      await registrar(organizationId, c.conversationId, decision.paso, ancla, decision.templateId, false, "La plantilla no existe o no está aprobada");
-      resumen.errores++;
-      continue;
-    }
-    const variables = countVariables(p.body) >= 1 ? [primerNombre(c.nombre) || "hola"] : [];
-    try {
-      await sendTemplate({ organizationId, conversationId: c.conversationId, templateId: p.id, variables });
-      await registrar(organizationId, c.conversationId, decision.paso, ancla, p.id, true, null);
-      resumen.enviadas++;
-    } catch (err) {
-      // Se registra igual: un error no se reintenta en bucle cada 15 minutos.
-      await registrar(organizationId, c.conversationId, decision.paso, ancla, p.id, false, err instanceof Error ? err.message.slice(0, 300) : "error");
-      resumen.errores++;
-    }
-  }
-  return resumen;
+  return { conAncla, hechos };
 }
 
-async function registrar(
+/**
+ * 085 — Lo que le toca a una candidata: la secuencia, el ancla y la decisión
+ * de hoy. `dentroDe` días adelante simula el paso del tiempo para anticipar
+ * el próximo envío sin mandar nada.
+ */
+export function evaluarCandidata(
+  c: Awaited<ReturnType<typeof candidatasDeSeguimiento>>["conAncla"][number],
+  hechos: Awaited<ReturnType<typeof candidatasDeSeguimiento>>["hechos"],
+  ajustes: { seguimiento: Awaited<ReturnType<typeof ajustesCrm>>["seguimiento"]; prospeccion: Awaited<ReturnType<typeof ajustesCrm>>["prospeccion"] },
+  ahora: Date,
+  dentroDe = 0
+) {
+  const { seguimiento, prospeccion } = ajustes;
+  // 077 — Con secuencia por etapa los días cuentan desde lo más reciente:
+  // nuestro mensaje sin respuesta o la entrada a la etapa. Cambiar de etapa
+  // arranca su propia secuencia (otro ancla, otros pasos).
+  const sec = c.prospecto ? { modo: "general" as const } : secuenciaDeEtapa(seguimiento, c.stageId);
+  if (!sec) return null;
+  const conPersona = c.atendido && c.motivoAtencion !== "plantilla";
+  if (!c.prospecto && conPersona && sec.modo !== "etapa") return null;
+  const base = new Date(c.ancla);
+  const entro = c.entroEtapa ? new Date(c.entroEtapa) : null;
+  const ancla = sec.modo === "etapa" && entro && entro > base ? entro : base;
+  const dias = Math.floor((ahora.getTime() - ancla.getTime()) / DIA_MS) + dentroDe;
+  const delAncla = hechos.filter(
+    (h) => h.conversationId === c.conversationId && h.anchorAt.getTime() === ancla.getTime() && h.step > 0 && h.step < 100
+  );
+  const pasosHechos = new Set(
+    hechos
+      .filter((h) => h.conversationId === c.conversationId && h.anchorAt.getTime() === ancla.getTime())
+      .map((h) => h.step)
+  );
+  const ultimoEnvio = delAncla.reduce<Date | null>((m, h) => (!m || h.createdAt > m ? h.createdAt : m), null);
+  const diasDesdeUltimo = ultimoEnvio
+    ? Math.floor((ahora.getTime() - ultimoEnvio.getTime()) / DIA_MS) + dentroDe
+    : null;
+  const decision =
+    sec.modo === "etapa"
+      ? decidirSeguimiento({
+          ajustes: { enabled: seguimiento.enabled, pasos: sec.secuencia.pasos, archivarDias: sec.secuencia.finalDias },
+          dias,
+          hechos: pasosHechos,
+          final: sec.secuencia.final,
+          diasDesdeUltimo,
+        })
+      : decidirSeguimiento({
+          ajustes: c.prospecto ? prospeccion : seguimiento,
+          dias,
+          hechos: pasosHechos,
+          diasDesdeUltimo,
+        });
+  return { ancla, decision };
+}
+
+export async function registrar(
   organizationId: string,
   conversationId: string,
   step: number,

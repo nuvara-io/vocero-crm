@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { CalendarClock, X } from "lucide-react";
+import type { EnvioDto } from "@/lib/envios";
 import {
   nombreLegible,
   problemasDePlantilla,
@@ -27,10 +29,18 @@ import { SelectNativo } from "@/components/ui/select-nativo";
 export function TemplateSender({
   conversationId,
   onSent,
+  soloProgramar = false,
 }: {
   conversationId: string;
   onSent: () => void;
+  /** 085 — Con la ventana abierta solo se usa para programar. */
+  soloProgramar?: boolean;
 }) {
+  // 085 — Programar para un día y hora en vez de enviar ya.
+  const [programando, setProgramando] = useState(soloProgramar);
+  const [cuando, setCuando] = useState("");
+  const [aviso, setAviso] = useState<string | null>(null);
+  const [recarga, setRecarga] = useState(0);
   const [templates, setTemplates] = useState<TemplateDto[] | null>(null);
   const [selectedId, setSelectedId] = useState<string>("");
   const [variables, setVariables] = useState<string[]>([]);
@@ -124,6 +134,37 @@ export function TemplateSender({
     setVariables(sugeridas.map((v) => v.valor));
   }
 
+  async function programar() {
+    if (!selected || sending || !cuando) return;
+    const sendAt = new Date(cuando);
+    if (Number.isNaN(sendAt.getTime())) return;
+    setSending(true);
+    setError(null);
+    const res = await fetch("/api/envios", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        conversationId,
+        templateId: selected.id,
+        variables: variableCount > 0 ? values : [],
+        sendAt: sendAt.toISOString(),
+      }),
+    }).catch(() => null);
+    setSending(false);
+    if (!res?.ok) {
+      const data = (await res?.json().catch(() => null)) as { error?: { message?: string } } | null;
+      setError(data?.error?.message ?? "No se pudo programar");
+      return;
+    }
+    setAviso(
+      `Programada: ${nombreLegible(selected.name)} · ${sendAt.toLocaleString("es-CO", { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}`
+    );
+    setSelectedId("");
+    setVariables([]);
+    setCuando("");
+    setRecarga((n) => n + 1);
+  }
+
   async function send() {
     if (!selected || sending) return;
     setSending(true);
@@ -176,14 +217,52 @@ export function TemplateSender({
             </option>
           ))}
         </SelectNativo>
-        <Button
-          className="shrink-0"
-          onClick={() => void send()}
-          disabled={!selected || sending || missingValue || hayProblema}
-        >
-          {sending ? "Enviando…" : "Enviar plantilla"}
-        </Button>
+        {!programando && (
+          <Button
+            className="shrink-0"
+            onClick={() => void send()}
+            disabled={!selected || sending || missingValue || hayProblema}
+          >
+            {sending ? "Enviando…" : "Enviar plantilla"}
+          </Button>
+        )}
+        {!soloProgramar && (
+          <Button
+            variant={programando ? "secondary" : "outline"}
+            className="shrink-0"
+            aria-pressed={programando}
+            onClick={() => setProgramando((p) => !p)}
+            title="Elegir día y hora para que salga sola"
+          >
+            <CalendarClock className="h-4 w-4" strokeWidth={1.7} />
+            {programando ? "Enviar ya" : "Programar"}
+          </Button>
+        )}
       </div>
+
+      {programando && (
+        <div className="flex flex-wrap items-center gap-2">
+          <Label htmlFor={`programar-${conversationId}`} className="text-xs">
+            ¿Cuándo sale?
+          </Label>
+          <Input
+            id={`programar-${conversationId}`}
+            type="datetime-local"
+            value={cuando}
+            onChange={(e) => setCuando(e.target.value)}
+            className="h-8 w-auto text-sm"
+          />
+          <Button
+            size="sm"
+            onClick={() => void programar()}
+            disabled={!selected || !cuando || sending || missingValue || hayProblema}
+          >
+            {sending ? "Programando…" : "Programar envío"}
+          </Button>
+        </div>
+      )}
+      {aviso && <p className="text-xs text-success-text">{aviso}</p>}
+      <ProgramadosDelChat conversationId={conversationId} recarga={recarga} />
 
       {selected && (
         <div className="grid gap-3 rounded-xl border bg-subtle p-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
@@ -250,5 +329,64 @@ export function TemplateSender({
         <p className="text-xs text-warning-text">Llena los datos en amarillo para poder enviarla.</p>
       )}
     </div>
+  );
+}
+
+/** 085 — Lo programado en este chat, con su ✕ para cancelarlo. */
+function ProgramadosDelChat({ conversationId, recarga }: { conversationId: string; recarga: number }) {
+  const [envios, setEnvios] = useState<EnvioDto[]>([]);
+  const [otra, setOtra] = useState(0);
+  useEffect(() => {
+    let vivo = true;
+    fetch(`/api/envios?conversationId=${encodeURIComponent(conversationId)}`)
+      .then((r) => (r.ok ? r.json() : { envios: [] }))
+      .then((d: { envios?: EnvioDto[] }) => {
+        if (vivo) setEnvios((d.envios ?? []).filter((e) => e.estado === "pendiente"));
+      })
+      .catch(() => {});
+    return () => {
+      vivo = false;
+    };
+  }, [conversationId, recarga, otra]);
+  if (envios.length === 0) return null;
+  return (
+    <ul className="space-y-1" aria-label="Envíos programados de este chat">
+      {envios.map((e) => (
+        <li key={e.id} className="flex items-center gap-2 rounded-md border bg-subtle px-2.5 py-1.5 text-xs">
+          <CalendarClock className="h-3.5 w-3.5 shrink-0 text-text-3" strokeWidth={1.7} />
+          <span className="min-w-0 flex-1 truncate">
+            <span className="font-semibold">
+              {e.accion === "enviar" ? nombreLegible(e.plantilla?.nombre ?? "") : e.accion === "archivar" ? "Archivar el chat" : "Pasar a Perdido"}
+            </span>{" "}
+            ·{" "}
+            {new Date(e.cuando).toLocaleString("es-CO", { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}
+            {e.origen === "automatico" ? " · automático" : ""}
+          </span>
+          <button
+            type="button"
+            title={e.origen === "automatico" ? "Que el seguimiento no lo haga" : "Cancelar el envío"}
+            aria-label={e.origen === "automatico" ? "Omitir" : "Cancelar el envío"}
+            onClick={async () => {
+              await (e.origen === "automatico"
+                ? fetch("/api/envios/omitir", {
+                    method: "POST",
+                    headers: { "content-type": "application/json" },
+                    body: JSON.stringify({ conversationId: e.conversationId, paso: e.paso ?? 0, ancla: e.ancla, templateId: e.plantilla?.id ?? null }),
+                  })
+                : fetch(`/api/envios/${e.id}`, {
+                    method: "PATCH",
+                    headers: { "content-type": "application/json" },
+                    body: JSON.stringify({ action: "cancelar" }),
+                  })
+              ).catch(() => null);
+              setOtra((n) => n + 1);
+            }}
+            className="rounded p-0.5 text-text-3 hover:bg-accent hover:text-foreground"
+          >
+            <X className="h-3.5 w-3.5" strokeWidth={2} />
+          </button>
+        </li>
+      ))}
+    </ul>
   );
 }

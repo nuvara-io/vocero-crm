@@ -1492,6 +1492,41 @@ export const conversationNote = pgTable(
   ]
 );
 
+/**
+ * 085 — Una plantilla que alguien del equipo programó para un día y hora.
+ * La manda el CRM a su hora; se puede cancelar o mover mientras esté
+ * pendiente. Lo automático (seguimiento por etapa) no vive aquí: se calcula.
+ */
+export const scheduledSend = pgTable(
+  "scheduled_send",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    conversationId: text("conversation_id")
+      .notNull()
+      .references(() => conversation.id, { onDelete: "cascade" }),
+    templateId: text("template_id")
+      .notNull()
+      .references(() => template.id, { onDelete: "cascade" }),
+    variables: jsonb("variables").$type<string[]>().notNull().default([]),
+    sendAt: timestamp("send_at").notNull(),
+    status: text("status", { enum: ["pendiente", "enviando", "enviado", "cancelado", "error"] })
+      .notNull()
+      .default("pendiente"),
+    error: text("error"),
+    createdByUserId: text("created_by_user_id").references(() => user.id, { onDelete: "set null" }),
+    sentAt: timestamp("sent_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("scheduled_send_due_idx").on(t.status, t.sendAt),
+    index("scheduled_send_org_idx").on(t.organizationId, t.sendAt),
+  ]
+);
+
 /* ============================================================
  * 068 — Comisiones del equipo comercial (fork de núvara)
  * ============================================================ */

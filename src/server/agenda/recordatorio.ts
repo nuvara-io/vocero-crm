@@ -1,3 +1,4 @@
+import { nombreParaPlantilla } from "@/lib/envios";
 import { eq, gt, inArray, lte } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
@@ -5,7 +6,6 @@ import { scoped } from "@/lib/db/tenant";
 import { tocaRecordatorio } from "@/lib/crm-reglas";
 import { sugerirVariables, type DatosPlantilla } from "@/lib/plantilla-variables";
 import { countVariables } from "@/lib/templates";
-import { primerNombre } from "@/lib/respuestas-rapidas";
 import { businessTimezone } from "@/server/analytics/period";
 import { getBranding } from "@/server/branding";
 import { ajustesCrm } from "@/server/crm-ajustes";
@@ -146,7 +146,7 @@ export async function recordatoriosDeOrganizacion(
       continue;
     }
     const datos: DatosPlantilla = {
-      nombre: primerNombre(c.nombre) || null,
+      nombre: nombreParaPlantilla(c.nombre),
       asesor: null,
       negocio: branding.name || null,
       cita: datosDeCita(c.scheduledAt, c.enlace, tz),

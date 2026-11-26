@@ -253,6 +253,13 @@
       "when": 1795626124379,
       "tag": "0035_seguimiento_demo",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1795703752356,
+      "tag": "0036_envios_programados",
+      "breakpoints": true
     }
   ]
 }

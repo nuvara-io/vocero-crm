@@ -48,6 +48,7 @@ const prefixes = {
   commissionSettlement: "liq",
   // 071 — seguimiento automático
   followupSend: "fup",
+  scheduledSend: "env",
 } as const;
 
 export type IdKind = keyof typeof prefixes;

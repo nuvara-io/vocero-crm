@@ -9,6 +9,7 @@ import {
   Sparkles,
   Users,
   Wallet,
+  Send,
   Target,
   type LucideIcon,
 } from "lucide-react";
@@ -71,6 +72,8 @@ export function appNavGroups({
   ];
   // Citas va después de Contactos: es el paso siguiente de un trato, no una
   // sección aparte.
+  // 085 — Lo que va a salir: plantillas programadas y seguimiento.
+  trabajo.push({ href: "/envios", label: "Envíos", icon: Send });
   if (agenda) trabajo.push({ href: "/bookings", label: "Citas", icon: CalendarDays });
   if (prospeccion) trabajo.push({ href: "/prospeccion", label: "Prospección", icon: Target });
 

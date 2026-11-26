@@ -18,6 +18,7 @@ import {
   Paperclip,
   Send,
   X,
+  CalendarClock,
 } from "lucide-react";
 import type { ConversationDto, MessageDto, TemplateDto } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -71,6 +72,8 @@ export function Composer({
 }) {
   // 051 — Lo que quedó escrito en esta conversación vuelve al regresar a ella.
   const [text, setText] = useState(() => leerBorrador("responder", conversation.id));
+  // 085 — El panel de programar una plantilla, abierto o no.
+  const [programarAbierto, setProgramarAbierto] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [templates, setTemplates] = useState<TemplateDto[]>([]);
@@ -645,8 +648,13 @@ export function Composer({
           </p>
         </div>
       )}
+      {programarAbierto && (
+        <div className="mb-2.5 rounded-xl border bg-card p-3">
+          <TemplateSender conversationId={conversation.id} onSent={onSent} soloProgramar />
+        </div>
+      )}
       {templates.length > 0 && !file && (
-        <div className="mb-2.5">
+        <div className="mb-2.5 flex items-center gap-2">
           {/* Una lista, no una fila de botones: con muchas plantillas la fila tapaba el chat. */}
           <SelectNativo
             aria-label="Usar una plantilla como texto"
@@ -669,6 +677,16 @@ export function Composer({
               </option>
             ))}
           </SelectNativo>
+          {/* 085 — Programar una plantilla aprobada para que salga sola. */}
+          <button
+            type="button"
+            aria-pressed={programarAbierto}
+            onClick={() => setProgramarAbierto((v) => !v)}
+            className="flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-border-strong px-3 text-xs font-semibold text-text-2 hover:border-foreground hover:text-foreground"
+          >
+            <CalendarClock className="h-3.5 w-3.5" strokeWidth={1.7} />
+            {programarAbierto ? "Cerrar" : "Programar"}
+          </button>
         </div>
       )}
 

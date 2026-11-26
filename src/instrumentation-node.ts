@@ -6,6 +6,7 @@ import { mediaDirStatus } from "@/server/media-dir";
 import { leerConfigDespacho } from "@/server/brains/config";
 import { iniciarWorker, tanda } from "@/server/dispatch/worker";
 import { iniciarSeguimiento } from "@/server/seguimiento/runner";
+import { iniciarEnviosProgramados } from "@/server/envios/servicio";
 import { asegurarEtapasDeDemoEnTodas } from "@/server/embudo-demo";
 import { cifrarSecretosEnClaro } from "@/server/zernio/secreto-guardado";
 import { barrido, iniciarBarrido } from "@/server/webhooks/worker";
@@ -135,6 +136,7 @@ export function resumeWebhooks(): void {
 export function resumeSeguimiento(): void {
   if (process.env.NODE_ENV === "test") return;
   iniciarSeguimiento();
+  iniciarEnviosProgramados();
   // 077 — Recordatorio de la demo N minutos antes (si está encendido).
   iniciarRecordatorios();
   // 079 — Lo que se mueve o borra en Google Calendar vuelve al CRM.
