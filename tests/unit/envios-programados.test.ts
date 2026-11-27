@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { esDePlantilla } from "@/lib/plantilla-variables";
 import { SILENCIO_TRAS_MANUAL_MS, horaValida, moverSchema, noAntesDe, nombreParaPlantilla, omitirSchema, primeraHoraHabil, programarSchema } from "@/lib/envios";
 import { horarioHabil } from "@/server/seguimiento/runner";
 
@@ -56,5 +57,19 @@ describe("086 — el seguimiento no habla encima del equipo", () => {
 
   it("sin mensajes nuestros no hay espera", () => {
     expect(noAntesDe({ ultimoNuestro: null, ultimoAuto: null })).toBeNull();
+  });
+});
+
+describe("086 — la misma plantilla no sale dos veces el mismo día", () => {
+  const body = "Hola {{1}}, ¿te muestro núvara en vivo? Es gratis. Responde BAJA.";
+  it("reconoce la plantilla aunque cambie el nombre", () => {
+    expect(esDePlantilla(body, "Hola Omar, ¿te muestro núvara en vivo? Es gratis. Responde BAJA.")).toBe(true);
+    expect(esDePlantilla(body, "Hola 🥰🥰, ¿te muestro núvara en vivo? Es gratis. Responde BAJA.")).toBe(true);
+  });
+  it("no confunde otra plantilla", () => {
+    expect(esDePlantilla(body, "Hola Omar, soy Valeria de núvara. Quedó pendiente tu consulta.")).toBe(false);
+  });
+  it("sirve con plantillas sin variables", () => {
+    expect(esDePlantilla("Gracias por tu tiempo.", "Gracias por tu tiempo.")).toBe(true);
   });
 });

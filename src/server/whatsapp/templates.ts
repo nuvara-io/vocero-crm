@@ -1,4 +1,4 @@
-import { problemasDePlantilla } from "@/lib/plantilla-variables";
+import { esDePlantilla, problemasDePlantilla } from "@/lib/plantilla-variables";
 import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { bloqueoDePlantilla, diaEn } from "@/lib/prospeccion";
 import { businessTimezone } from "@/server/analytics/period";
@@ -494,6 +494,24 @@ export async function sendTemplate(input: {
     : 0;
   const bloqueo = bloqueoDePlantilla({ contacto: row.contact, ahora, tz, primerosContactosHoy: primerosHoy });
   if (bloqueo) throw new SendError(bloqueo.code, bloqueo.message);
+
+  // 086 — La misma plantilla no sale dos veces el mismo día al mismo chat
+  // (a mano, programada o en automático).
+  const hoy = diaEn(ahora, tz);
+  const recientes = await db
+    .select({ text: schema.message.text, createdAt: schema.message.createdAt })
+    .from(schema.message)
+    .where(
+      and(
+        eq(schema.message.conversationId, input.conversationId),
+        eq(schema.message.direction, "out"),
+        eq(schema.message.type, "template"),
+        sql`${schema.message.createdAt} > now() - interval '30 hours'`
+      )
+    );
+  if (recientes.some((m) => diaEn(m.createdAt, tz) === hoy && m.text && esDePlantilla(template.body, m.text))) {
+    throw new TemplateError("invalid", "Esta plantilla ya se le envió hoy a este chat");
+  }
 
   const creds = await getCredentialsByOrg(input.organizationId);
   if (!creds) throw new TemplateError("not_connected", "Sin número conectado");

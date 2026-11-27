@@ -142,3 +142,13 @@ export function problemaDeVariable(tipo: TipoVariable, valor: string): string | 
 export function problemasDePlantilla(body: string, valores: readonly string[]): (string | null)[] {
   return valores.map((v, i) => problemaDeVariable(tipoDeVariable(body, i + 1), v));
 }
+
+/**
+ * 086 — ¿Este texto salió de esa plantilla? El mensaje guarda el cuerpo ya
+ * con las variables puestas, así que se compara el texto fijo y se deja libre
+ * lo que va en cada {{n}}.
+ */
+export function esDePlantilla(body: string, texto: string): boolean {
+  const fijo = body.split(/\{\{\s*\d+\s*\}\}/).map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  return new RegExp(`^${fijo.join("[\\s\\S]*?")}$`).test(texto.trim()) || texto.trim() === body.trim();
+}
