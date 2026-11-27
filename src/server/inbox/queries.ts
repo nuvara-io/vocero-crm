@@ -8,6 +8,7 @@ import type { AgendaDeChat } from "@/lib/bandeja-hoy";
 import { PASOS_DEMO, type PasoDemo } from "@/lib/seguimiento-demo";
 import { dayIsoInTz, timeInTz } from "@/lib/time/slots";
 import { agendaEnabled } from "@/server/agenda/flag";
+import { origenSinAnuncio } from "@/lib/anuncios";
 import { getSettings } from "@/server/agenda/settings";
 
 /**
@@ -290,6 +291,15 @@ export function serializeConversation(
     },
     preview,
     anuncio,
+    // 088 — Sin anuncio, de dónde vino.
+    origen: anuncio
+      ? null
+      : origenSinAnuncio({
+          source: contact.source,
+          sourceHint: contact.sourceHint,
+          prospectList: contact.prospectList,
+          tieneChat: true,
+        }),
     // 067
     archivedAt: contact.archivedAt?.toISOString() ?? null,
     // 078

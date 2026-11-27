@@ -3,6 +3,7 @@ import { withAuth } from "@/lib/api";
 import { getDb, schema } from "@/lib/db";
 import { scoped } from "@/lib/db/tenant";
 import { getBranding } from "@/server/branding";
+import { origenSinAnuncio } from "@/lib/anuncios";
 
 export const dynamic = "force-dynamic";
 
@@ -76,6 +77,15 @@ export const GET = withAuth(async (session) => {
       anuncio: r.anuncioId
         ? { headline: r.headline, sourceId: r.sourceId, sourceType: r.sourceType }
         : null,
+      // 088 — Sin anuncio, de dónde vino.
+      origen: r.anuncioId
+        ? null
+        : origenSinAnuncio({
+            source: r.contact.source,
+            sourceHint: r.contact.sourceHint,
+            prospectList: r.contact.prospectList,
+            tieneChat: r.conversationId !== null,
+          }),
     })),
   });
 });

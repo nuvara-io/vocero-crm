@@ -37,6 +37,8 @@ export type ConversationDto = {
     /** `post` si fue una publicación y no un anuncio. */
     sourceType: string | null;
   } | null;
+  /** 088 — De dónde vino cuando no hubo anuncio (null si llegó por uno). */
+  origen?: import("@/lib/anuncios").OrigenSinAnuncio | null;
   /** 067 — El contacto se archivó: la bandeja lo esconde salvo en «Archivadas». */
   archivedAt: string | null;
   /** 067 — Tipo de la etapa: `won`/`lost` ya no piden seguimiento. */

@@ -27,7 +27,7 @@ import { PriorityBadge } from "./priority-picker";
 import { LeadDrawer } from "./lead-drawer";
 import { EtiquetaPauta } from "@/components/anuncio-origen";
 import { SelectNativo } from "@/components/ui/select-nativo";
-import { PAUTA_CUALQUIERA, PAUTA_SIN, PAUTA_TODAS, pasaPauta, pautasDe } from "@/lib/anuncios";
+import { PAUTA_CUALQUIERA, PAUTA_SIN, PAUTA_TODAS, pasaPauta, pautasDe, type OrigenSinAnuncio } from "@/lib/anuncios";
 
 export type BoardLead = {
   id: string;
@@ -41,6 +41,8 @@ export type BoardLead = {
   priority: PriorityValue | null;
   /** 087 — La pauta de la que llegó (null si no vino de un anuncio). */
   anuncio: { headline: string | null; sourceId: string | null; sourceType: string | null } | null;
+  /** 088 — Sin anuncio, de dónde vino. */
+  origen: OrigenSinAnuncio | null;
 };
 
 export function PipelineClient() {
@@ -177,14 +179,14 @@ export function PipelineClient() {
     void moverLead(leadId, stageId);
   }
 
-  const { pautas, sin: sinPauta } = pautasDe(leads);
+  const { pautas, sin: sinPauta, origenes } = pautasDe(leads);
 
   return (
     <div className="flex h-full flex-col">
       <header className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3 sm:px-6 sm:py-4">
         <h2 className="text-[17px] font-bold tracking-tight">Pipeline</h2>
         <div className="flex flex-wrap items-center gap-2">
-          {(pautas.length > 0 || pauta !== PAUTA_TODAS) && (
+          {(leads.length > 0 || pauta !== PAUTA_TODAS) && (
             <SelectNativo
               value={pauta}
               onChange={(e) => setPauta(e.target.value)}
@@ -193,13 +195,22 @@ export function PipelineClient() {
               envoltura="max-w-[16rem]"
             >
               <option value={PAUTA_TODAS}>Toda pauta ({leads.length})</option>
-              <option value={PAUTA_CUALQUIERA}>De cualquier anuncio ({leads.length - sinPauta})</option>
-              {pautas.map((p) => (
-                <option key={p.clave} value={p.clave} title={p.titular}>
-                  {p.titular} ({p.n})
-                </option>
-              ))}
-              <option value={PAUTA_SIN}>Sin anuncio ({sinPauta})</option>
+              <optgroup label="Anuncios">
+                <option value={PAUTA_CUALQUIERA}>De cualquier anuncio ({leads.length - sinPauta})</option>
+                {pautas.map((p) => (
+                  <option key={p.clave} value={p.clave} title={p.titular}>
+                    {p.titular} ({p.n})
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="Sin anuncio">
+                <option value={PAUTA_SIN}>Todo sin anuncio ({sinPauta})</option>
+                {origenes.map((o) => (
+                  <option key={o.clave} value={o.clave}>
+                    {o.nombre} ({o.n})
+                  </option>
+                ))}
+              </optgroup>
             </SelectNativo>
           )}
           <Button variant="outline" size="sm" onClick={() => setManaging(true)}>
@@ -225,7 +236,7 @@ export function PipelineClient() {
                 onEditAmount={setEditandoMonto}
                 onOpen={(l) => setAbiertoId(l.id)}
                 leads={leads
-                  .filter((l) => l.stageId === stage.id && pasaPauta(l.anuncio, pauta))
+                  .filter((l) => l.stageId === stage.id && pasaPauta(l, pauta))
                   .sort((a, b) => a.position - b.position)}
               />
             ))}
@@ -465,7 +476,7 @@ function LeadCard({
             <p className="truncate text-sm font-semibold">{lead.contact.name}</p>
             {lead.priority && <PriorityBadge value={lead.priority} />}
           </div>
-          {lead.anuncio && <EtiquetaPauta anuncio={lead.anuncio} className="mt-0.5" />}
+          <EtiquetaPauta anuncio={lead.anuncio} origen={lead.origen} className="mt-0.5" />
           <p className="text-[11px] text-muted-foreground">
             {lead.lastActivityAt
               ? `Actividad: ${formatTime(lead.lastActivityAt)}`

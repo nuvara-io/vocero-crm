@@ -56,16 +56,85 @@ export function nombreCortoDePauta(anuncio: OrigenAnuncio): string {
   return base.length > LARGO_CORTO ? `${base.slice(0, LARGO_CORTO - 1).trimEnd()}…` : base;
 }
 
+/**
+ * 088 — De dónde vino lo que NO llegó por un anuncio. En orden de lo más
+ * confiable a lo menos: lo que capturó el equipo, la lista de prospección,
+ * la pista del primer mensaje (web o saludo de Meta), y al final si escribió
+ * por su cuenta o se creó a mano sin chat.
+ */
+export type OrigenSinAnuncio =
+  | "prospeccion"
+  | "web"
+  | "meta"
+  | "organico"
+  | "referido"
+  | "conocido"
+  | "otro"
+  | "directo"
+  | "manual";
+
+export const ORIGEN_LABEL: Record<OrigenSinAnuncio, string> = {
+  prospeccion: "Prospección",
+  web: "Web o redes",
+  meta: "Meta, sin anuncio",
+  organico: "Contenido orgánico",
+  referido: "Referido",
+  conocido: "Conocido",
+  otro: "Otro origen",
+  directo: "Escribió directo",
+  manual: "Creado a mano",
+};
+
+const ORDEN_ORIGEN: OrigenSinAnuncio[] = [
+  "prospeccion",
+  "web",
+  "meta",
+  "organico",
+  "referido",
+  "conocido",
+  "otro",
+  "directo",
+  "manual",
+];
+
+export function origenSinAnuncio(contacto: {
+  source: string | null;
+  sourceHint: string | null;
+  prospectList: string | null;
+  /** ¿Tiene conversación? Sin chat y sin nada más, alguien lo creó a mano. */
+  tieneChat: boolean;
+}): OrigenSinAnuncio {
+  const capturada = contacto.source;
+  if (capturada === "organico" || capturada === "referido" || capturada === "conocido" || capturada === "otro") {
+    return capturada;
+  }
+  if (contacto.prospectList) return "prospeccion";
+  if (contacto.sourceHint === "web" || contacto.sourceHint === "meta") return contacto.sourceHint;
+  return contacto.tieneChat ? "directo" : "manual";
+}
+
+export const claveDeOrigen = (o: OrigenSinAnuncio) => `o:${o}`;
+
+type ConOrigen = { anuncio: OrigenAnuncio | null; origen?: OrigenSinAnuncio | null };
+
 export type Pauta = { clave: string; nombre: string; titular: string; n: number };
 
-/** Las pautas presentes, de la que más chats trae a la que menos. */
-export function pautasDe(items: readonly { anuncio: OrigenAnuncio | null }[]): { pautas: Pauta[]; sin: number } {
+export type OrigenContado = { clave: string; origen: OrigenSinAnuncio; nombre: string; n: number };
+
+/**
+ * Las pautas presentes, de la que más chats trae a la que menos, y (088) los
+ * orígenes de lo que no vino de un anuncio, en su orden fijo.
+ */
+export function pautasDe(items: readonly ConOrigen[]): { pautas: Pauta[]; sin: number; origenes: OrigenContado[] } {
   const porClave = new Map<string, Pauta>();
+  const porOrigen = new Map<OrigenSinAnuncio, number>();
   let sin = 0;
   for (const it of items) {
     const clave = claveDePauta(it.anuncio);
     if (!clave || !it.anuncio) {
       sin++;
+      const o = it.origen ?? "directo";
+      porOrigen.set(o, (porOrigen.get(o) ?? 0) + 1);
       continue;
     }
     const p = porClave.get(clave);
@@ -79,13 +148,29 @@ export function pautasDe(items: readonly { anuncio: OrigenAnuncio | null }[]): {
       });
   }
   const pautas = [...porClave.values()].sort((a, b) => b.n - a.n || a.nombre.localeCompare(b.nombre, "es"));
-  return { pautas, sin };
+  const origenes = ORDEN_ORIGEN.filter((o) => porOrigen.has(o)).map((o) => ({
+    clave: claveDeOrigen(o),
+    origen: o,
+    nombre: ORIGEN_LABEL[o],
+    n: porOrigen.get(o)!,
+  }));
+  return { pautas, sin, origenes };
 }
 
-/** ¿El chat pasa el filtro de pauta elegido? */
-export function pasaPauta(anuncio: OrigenAnuncio | null | undefined, pauta: string): boolean {
+/** ¿El chat pasa el filtro de pauta u origen elegido? */
+export function pasaPauta(item: ConOrigen, pauta: string): boolean {
+  const { anuncio } = item;
   if (pauta === PAUTA_TODAS) return true;
   if (pauta === PAUTA_SIN) return !anuncio;
   if (pauta === PAUTA_CUALQUIERA) return !!anuncio;
+  if (pauta.startsWith("o:")) return !anuncio && claveDeOrigen(item.origen ?? "directo") === pauta;
   return claveDePauta(anuncio) === pauta;
+}
+
+/** Cómo se nombra el filtro puesto. */
+export function nombreDelFiltro(pauta: string, pautas: readonly Pauta[]): string {
+  if (pauta === PAUTA_SIN) return "Sin anuncio";
+  if (pauta === PAUTA_CUALQUIERA) return "De anuncios";
+  if (pauta.startsWith("o:")) return `Origen: ${ORIGEN_LABEL[pauta.slice(2) as OrigenSinAnuncio] ?? "…"}`;
+  return `Pauta: ${pautas.find((p) => p.clave === pauta)?.nombre ?? "…"}`;
 }
