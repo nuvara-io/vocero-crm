@@ -51,6 +51,30 @@ export function primeraHoraHabil(vence: Date, ahora: Date, habil: (d: Date) => b
   return t;
 }
 
+/**
+ * 086 — Silencio tras un mensaje nuestro que no salió del seguimiento.
+ *
+ * Si alguien del equipo escribió o mandó una plantilla a mano (o salió un
+ * recordatorio), el seguimiento automático no habla encima: espera 48 horas
+ * desde ese mensaje. Así no llegan dos plantillas seguidas al mismo chat.
+ * Los envíos del propio seguimiento no cuentan: ya llevan su espacio entre pasos.
+ */
+export const SILENCIO_TRAS_MANUAL_MS = 48 * 60 * 60 * 1000;
+const MARGEN_ENVIO_AUTO_MS = 2 * 60 * 1000;
+
+export function noAntesDe(input: {
+  /** El último mensaje nuestro (saliente) del chat. */
+  ultimoNuestro: Date | null;
+  /** El último envío registrado por el seguimiento automático en ese chat. */
+  ultimoAuto: Date | null;
+}): Date | null {
+  const { ultimoNuestro, ultimoAuto } = input;
+  if (!ultimoNuestro) return null;
+  const fueAuto = ultimoAuto != null && Math.abs(ultimoNuestro.getTime() - ultimoAuto.getTime()) <= MARGEN_ENVIO_AUTO_MS;
+  if (fueAuto) return null;
+  return new Date(ultimoNuestro.getTime() + SILENCIO_TRAS_MANUAL_MS);
+}
+
 export type EnvioDto = {
   id: string;
   /** `programado` lo puso una persona; `automatico` lo calcula el seguimiento. */

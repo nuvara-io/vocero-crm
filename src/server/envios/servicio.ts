@@ -219,7 +219,9 @@ async function automaticos(organizationId: string, dias: number, ahora: Date): P
       // Le toca cuando el conteo de días llega a ese número (o ya, si k = 0);
       // sale en la primera hora hábil desde ahí.
       const diasHoy = Math.floor((ahora.getTime() - e.ancla.getTime()) / DIA_MS);
-      const vence = k === 0 ? ahora : new Date(e.ancla.getTime() + (diasHoy + k) * DIA_MS);
+      const porDias = k === 0 ? ahora : new Date(e.ancla.getTime() + (diasHoy + k) * DIA_MS);
+      // 086 — Tras un mensaje a mano, no antes de que pase la espera.
+      const vence = e.espera && e.espera > porDias ? e.espera : porDias;
       const cuando = primeraHoraHabil(vence, ahora, (d) => horarioHabil(d, tz));
       const d = e.decision;
       out.push({

@@ -5,7 +5,7 @@ import { scoped } from "@/lib/db/tenant";
 import { decidirSeguimiento, secuenciaDeEtapa } from "@/lib/crm-reglas";
 import { festivosDe } from "@/lib/festivos";
 import { horarioLey2300 } from "@/lib/prospeccion";
-import { nombreParaPlantilla } from "@/lib/envios";
+import { noAntesDe, nombreParaPlantilla } from "@/lib/envios";
 import { countVariables } from "@/lib/templates";
 import { businessTimezone } from "@/server/analytics/period";
 import { ajustesCrm } from "@/server/crm-ajustes";
@@ -202,6 +202,11 @@ export async function candidatasDeSeguimiento(
           and m."direction" = 'out'
           and m."created_at" > coalesce(${schema.conversation.lastInboundAt}, '-infinity'::timestamp)
       )`,
+      // 086 — El último mensaje nuestro, para no hablar encima del equipo.
+      ultimoNuestro: sql<Date | null>`(
+        select max(m."created_at") from "message" m
+        where m."conversation_id" = ${schema.conversation.id} and m."direction" = 'out'
+      )`,
     })
     .from(schema.conversation)
     .innerJoin(schema.contact, eq(schema.contact.id, schema.conversation.contactId))
@@ -290,6 +295,16 @@ export function evaluarCandidata(
   const diasDesdeUltimo = ultimoEnvio
     ? Math.floor((ahora.getTime() - ultimoEnvio.getTime()) / DIA_MS) + dentroDe
     : null;
+  // 086 — Si el equipo escribió a mano hace poco, el seguimiento espera.
+  const ultimoAuto = hechos
+    .filter((h) => h.conversationId === c.conversationId && h.step > 0 && h.step < 100)
+    .reduce<Date | null>((m, h) => (!m || h.createdAt > m ? h.createdAt : m), null);
+  const espera = noAntesDe({
+    ultimoNuestro: c.ultimoNuestro ? new Date(c.ultimoNuestro) : null,
+    ultimoAuto,
+  });
+  const momento = ahora.getTime() + dentroDe * DIA_MS;
+  if (espera && momento < espera.getTime()) return { ancla, decision: null, espera };
   const decision =
     sec.modo === "etapa"
       ? decidirSeguimiento({
@@ -305,7 +320,7 @@ export function evaluarCandidata(
           hechos: pasosHechos,
           diasDesdeUltimo,
         });
-  return { ancla, decision };
+  return { ancla, decision, espera };
 }
 
 export async function registrar(
