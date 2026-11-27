@@ -10,6 +10,8 @@ import { cn } from "@/lib/utils";
 import { ContactAvatar } from "@/components/avatar";
 import { Button } from "@/components/ui/button";
 import { SelectNativo } from "@/components/ui/select-nativo";
+import { EtiquetaPauta } from "@/components/anuncio-origen";
+import { PAUTA_CUALQUIERA, PAUTA_SIN, PAUTA_TODAS, pasaPauta, pautasDe } from "@/lib/anuncios";
 import { EmptyState } from "@/components/ui/empty-state";
 import { emptyInboxDescription, formatTime, previewText } from "./helpers";
 import { EVENTO_BORRADOR, leerBorrador } from "@/lib/borradores";
@@ -126,7 +128,8 @@ export function ConversationList({
   const [seleccion, setSeleccion] = useState<Set<string>>(new Set());
   const ahora = new Date();
   const [soloPorVencer, setSoloPorVencer] = useState(false);
-  const [soloAnuncios, setSoloAnuncios] = useState(false);
+  // 087 — Filtro por pauta ("all" | "sin" | "cualquiera" | clave del anuncio).
+  const [pauta, setPauta] = useState<string>(PAUTA_TODAS);
   const [menuFiltros, setMenuFiltros] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   // El menú se cierra al hacer clic fuera o con Escape.
@@ -212,8 +215,9 @@ export function ConversationList({
     inbox === "all" ? searched : searched.filter((c) => c.channel === inbox);
   const inboxCount = (ch: Channel) =>
     searched.filter((c) => c.channel === ch).length;
-  // 018: las que abrió un anuncio (o una publicación con botón de WhatsApp).
-  const deAnuncios = inInbox.filter((c) => c.anuncio !== null);
+  // 018/087 — Las pautas de lo que está en la bandeja, con cuántos chats trae cada una.
+  const { pautas, sin: sinPauta } = pautasDe(inInbox);
+  const pautaElegida = pautas.find((p) => p.clave === pauta);
   // 052 — A la ventana le quedan 2 h o menos.
   const venciendo = inInbox.filter(porVencer);
   // Lo del menú «Filtrar» se aplica antes de las pestañas: «Todas» y «No
@@ -221,7 +225,7 @@ export function ConversationList({
   const filtrado = inInbox.filter(
     (c) =>
       (!soloPorVencer || porVencer(c)) &&
-      (!soloAnuncios || c.anuncio !== null) &&
+      pasaPauta(c.anuncio, pauta) &&
       (responsable === "all" ||
         (responsable === "none" ? c.assignee === null : c.assignee?.id === responsable)) &&
       (diasSeguimiento === 0 || pideSeguimiento(c, diasSeguimiento, ahora))
@@ -281,14 +285,14 @@ export function ConversationList({
   const nFiltros =
     (stage !== "all" ? 1 : 0) +
     (soloPorVencer ? 1 : 0) +
-    (soloAnuncios ? 1 : 0) +
+    (pauta !== PAUTA_TODAS ? 1 : 0) +
     (responsable !== "all" ? 1 : 0) +
     (diasSeguimiento > 0 ? 1 : 0) +
     (soloNoLeidas ? 1 : 0);
   function limpiarFiltros() {
     setStage("all");
     setSoloPorVencer(false);
-    setSoloAnuncios(false);
+    setPauta(PAUTA_TODAS);
     setResponsable("all");
     setDiasSeguimiento(0);
     setSoloNoLeidas(false);
@@ -325,7 +329,7 @@ export function ConversationList({
 
   /**
    * 083 — Una fila en dos renglones: nombre y hora; una sola etiqueta y la
-   * vista previa. El anuncio, la etapa y la atención humana viven en el panel
+   * vista previa. 087: más la pauta de origen. La etapa y la atención humana viven en el panel
    * del chat: en la lista solo va lo que dice qué hacer.
    */
   function fila(c: ConversationDto) {
@@ -410,6 +414,8 @@ export function ConversationList({
                   className="shrink-0 px-1.5 py-px text-[10.5px]"
                 />
               ) : null}
+              {/* 087 — De qué pauta llegó, salvo que ya se esté filtrando por una. */}
+              {c.anuncio && !pautaElegida && <EtiquetaPauta anuncio={c.anuncio} className="max-w-[8.5rem]" />}
               {porVencer(c) && (
                 // 052 — Pasada la ventana, solo con plantilla: se avisa antes.
                 <span data-vence title={etiquetaVence(c.windowRemainingMs)} className="shrink-0 text-warning-text">
@@ -662,16 +668,23 @@ export function ConversationList({
                     <span className="font-mono text-[11px] text-text-3">{venciendo.length}</span>
                   </label>
                 )}
-                {(deAnuncios.length > 0 || soloAnuncios) && (
-                  <label className="flex cursor-pointer items-center gap-2 text-[13px]">
-                    <input
-                      type="checkbox"
-                      checked={soloAnuncios}
-                      onChange={(e) => setSoloAnuncios(e.target.checked)}
-                      className="h-4 w-4 accent-[var(--accent)]"
-                    />
-                    <span className="flex-1">De anuncios</span>
-                    <span className="font-mono text-[11px] text-text-3">{deAnuncios.length}</span>
+                {(pautas.length > 0 || pauta !== PAUTA_TODAS) && (
+                  <label className="block space-y-1">
+                    <span className="kicker text-text-3">Pauta</span>
+                    <SelectNativo
+                      value={pauta}
+                      onChange={(e) => setPauta(e.target.value)}
+                      aria-label="Filtrar por pauta"
+                    >
+                      <option value={PAUTA_TODAS}>Toda pauta</option>
+                      <option value={PAUTA_CUALQUIERA}>De cualquier anuncio ({inInbox.length - sinPauta})</option>
+                      {pautas.map((p) => (
+                        <option key={p.clave} value={p.clave} title={p.titular}>
+                          {p.titular} ({p.n})
+                        </option>
+                      ))}
+                      <option value={PAUTA_SIN}>Sin anuncio ({sinPauta})</option>
+                    </SelectNativo>
                   </label>
                 )}
                 {nFiltros > 0 && (
@@ -696,8 +709,17 @@ export function ConversationList({
             {soloPorVencer && (
               <FiltroPuesto texto="Por vencer" onQuitar={() => setSoloPorVencer(false)} />
             )}
-            {soloAnuncios && (
-              <FiltroPuesto texto="De anuncios" onQuitar={() => setSoloAnuncios(false)} />
+            {pauta !== PAUTA_TODAS && (
+              <FiltroPuesto
+                texto={
+                  pauta === PAUTA_SIN
+                    ? "Sin anuncio"
+                    : pauta === PAUTA_CUALQUIERA
+                      ? "De anuncios"
+                      : `Pauta: ${pautaElegida?.nombre ?? "…"}`
+                }
+                onQuitar={() => setPauta(PAUTA_TODAS)}
+              />
             )}
             {responsable !== "all" && (
               <FiltroPuesto

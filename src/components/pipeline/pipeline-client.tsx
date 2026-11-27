@@ -25,6 +25,9 @@ import { LossReasonDialog } from "./loss-reason-dialog";
 import { AmountDialog } from "./amount-dialog";
 import { PriorityBadge } from "./priority-picker";
 import { LeadDrawer } from "./lead-drawer";
+import { EtiquetaPauta } from "@/components/anuncio-origen";
+import { SelectNativo } from "@/components/ui/select-nativo";
+import { PAUTA_CUALQUIERA, PAUTA_SIN, PAUTA_TODAS, pasaPauta, pautasDe } from "@/lib/anuncios";
 
 export type BoardLead = {
   id: string;
@@ -36,6 +39,8 @@ export type BoardLead = {
   amountCents: number | null;
   currency: string | null;
   priority: PriorityValue | null;
+  /** 087 — La pauta de la que llegó (null si no vino de un anuncio). */
+  anuncio: { headline: string | null; sourceId: string | null; sourceType: string | null } | null;
 };
 
 export function PipelineClient() {
@@ -58,6 +63,8 @@ export function PipelineClient() {
    * dentro, en vez de enseñar una copia que envejece.
    */
   const [abiertoId, setAbiertoId] = useState<string | null>(null);
+  // 087 — Filtro por pauta ("all" | "sin" | "cualquiera" | clave del anuncio).
+  const [pauta, setPauta] = useState<string>(PAUTA_TODAS);
   const abierto = leads.find((l) => l.id === abiertoId) ?? null;
 
   const sensors = useSensors(
@@ -170,13 +177,35 @@ export function PipelineClient() {
     void moverLead(leadId, stageId);
   }
 
+  const { pautas, sin: sinPauta } = pautasDe(leads);
+
   return (
     <div className="flex h-full flex-col">
       <header className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3 sm:px-6 sm:py-4">
         <h2 className="text-[17px] font-bold tracking-tight">Pipeline</h2>
-        <Button variant="outline" size="sm" onClick={() => setManaging(true)}>
-          <Settings2 className="h-4 w-4" /> Gestionar etapas
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          {(pautas.length > 0 || pauta !== PAUTA_TODAS) && (
+            <SelectNativo
+              value={pauta}
+              onChange={(e) => setPauta(e.target.value)}
+              aria-label="Filtrar por pauta"
+              tamano="sm"
+              envoltura="max-w-[16rem]"
+            >
+              <option value={PAUTA_TODAS}>Toda pauta ({leads.length})</option>
+              <option value={PAUTA_CUALQUIERA}>De cualquier anuncio ({leads.length - sinPauta})</option>
+              {pautas.map((p) => (
+                <option key={p.clave} value={p.clave} title={p.titular}>
+                  {p.titular} ({p.n})
+                </option>
+              ))}
+              <option value={PAUTA_SIN}>Sin anuncio ({sinPauta})</option>
+            </SelectNativo>
+          )}
+          <Button variant="outline" size="sm" onClick={() => setManaging(true)}>
+            <Settings2 className="h-4 w-4" /> Gestionar etapas
+          </Button>
+        </div>
       </header>
 
       {/* El tablero se arrastra en horizontal; en el teléfono cada columna
@@ -196,7 +225,7 @@ export function PipelineClient() {
                 onEditAmount={setEditandoMonto}
                 onOpen={(l) => setAbiertoId(l.id)}
                 leads={leads
-                  .filter((l) => l.stageId === stage.id)
+                  .filter((l) => l.stageId === stage.id && pasaPauta(l.anuncio, pauta))
                   .sort((a, b) => a.position - b.position)}
               />
             ))}
@@ -436,6 +465,7 @@ function LeadCard({
             <p className="truncate text-sm font-semibold">{lead.contact.name}</p>
             {lead.priority && <PriorityBadge value={lead.priority} />}
           </div>
+          {lead.anuncio && <EtiquetaPauta anuncio={lead.anuncio} className="mt-0.5" />}
           <p className="text-[11px] text-muted-foreground">
             {lead.lastActivityAt
               ? `Actividad: ${formatTime(lead.lastActivityAt)}`

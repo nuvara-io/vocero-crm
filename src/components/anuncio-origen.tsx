@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { ExternalLink, Megaphone } from "lucide-react";
 import type { AnuncioDto } from "@/lib/types";
-import { etiquetaDeOrigen, titularDeOrigen } from "@/lib/anuncios";
+import { etiquetaDeOrigen, nombreCortoDePauta, titularDeOrigen } from "@/lib/anuncios";
 
 /**
  * 019 — Miniatura del creativo para listas y tablas (Resultados). Sin imagen,
@@ -122,5 +122,33 @@ export function AnuncioOrigen({ anuncio }: { anuncio: AnuncioDto }) {
         </a>
       )}
     </div>
+  );
+}
+
+/**
+ * 087 — Etiqueta corta de la pauta para filas y tarjetas: megáfono y el
+ * nombre corto del anuncio; el titular completo va en el título (hover).
+ */
+export function EtiquetaPauta({
+  anuncio,
+  className,
+}: {
+  anuncio: { headline: string | null; sourceId: string | null; sourceType: string | null } | null;
+  className?: string;
+}) {
+  if (!anuncio) return null;
+  const titular = titularDeOrigen(anuncio.headline, anuncio.sourceType);
+  return (
+    <span
+      data-pauta
+      title={`${etiquetaDeOrigen(anuncio.sourceType)}: ${titular}`}
+      className={
+        "inline-flex max-w-[11rem] shrink-0 items-center gap-1 rounded-full border border-border bg-subtle px-1.5 py-px text-[10.5px] font-medium text-text-2 " +
+        (className ?? "")
+      }
+    >
+      <Megaphone className="h-3 w-3 shrink-0" strokeWidth={1.7} aria-hidden />
+      <span className="truncate">{nombreCortoDePauta(anuncio)}</span>
+    </span>
   );
 }

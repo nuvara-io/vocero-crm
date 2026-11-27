@@ -21,6 +21,11 @@ export const GET = withAuth(async (session) => {
       lead: schema.lead,
       contact: schema.contact,
       conversationId: schema.conversation.id,
+      // 087 — De qué pauta llegó, para la etiqueta y el filtro del tablero.
+      anuncioId: schema.adAttribution.id,
+      headline: schema.adAttribution.headline,
+      sourceId: schema.adAttribution.sourceId,
+      sourceType: schema.adAttribution.sourceType,
     })
     .from(schema.lead)
     .innerJoin(schema.contact, eq(schema.lead.contactId, schema.contact.id))
@@ -29,6 +34,13 @@ export const GET = withAuth(async (session) => {
       and(
         eq(schema.conversation.contactId, schema.contact.id),
         eq(schema.conversation.isTest, false)
+      )
+    )
+    .leftJoin(
+      schema.adAttribution,
+      and(
+        eq(schema.adAttribution.organizationId, schema.lead.organizationId),
+        eq(schema.adAttribution.conversationId, schema.conversation.id)
       )
     )
     .where(scoped(schema.lead.organizationId, session.organizationId))
@@ -61,6 +73,9 @@ export const GET = withAuth(async (session) => {
         phone: r.contact.phone,
       },
       conversationId: r.conversationId,
+      anuncio: r.anuncioId
+        ? { headline: r.headline, sourceId: r.sourceId, sourceType: r.sourceType }
+        : null,
     })),
   });
 });
